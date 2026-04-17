@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useKeyboardState } from "@/lib/game/useKeyboardState";
 import { useRafTicker } from "@/lib/game/useRafTicker";
+import { useRealtime } from "@/components/realtime/RealtimeProvider";
+import type { TetrisBoard, TetrisCell, TetrisPlayerScreen } from "@/lib/realtime/types";
 
 const COLS = 10;
 const ROWS = 22;
@@ -12,7 +14,6 @@ const CW = COLS * CELL + PANEL_W;
 const CH = (ROWS - 2) * CELL;
 const SIDEBAR_X = COLS * CELL + 12;
 
-type Cell = string | null;
 type GameState = "menu" | "playing" | "paused" | "game_over";
 type Active = { kind: string; r: number; c: number; rot: number };
 const COLORS: Record<string, string> = {
@@ -212,24 +213,87 @@ const SHAPES: Record<string, [number, number][][]> = {
 
 const ORDER = ["I", "O", "T", "S", "Z", "J", "L"] as const;
 
-function emptyBoard(): Cell[][] {
-  return Array.from({ length: ROWS }, () => Array<Cell>(COLS).fill(null));
+function emptyBoard(): TetrisCell[][] {
+  return Array.from({ length: ROWS }, () => Array<TetrisCell>(COLS).fill(null));
+}
+
+function composeBoardSnapshot(
+  board: TetrisCell[][],
+  active: Active | null
+): TetrisBoard {
+  const snapshot = board.map((row) => row.slice());
+  if (!active) return snapshot;
+  const cells = SHAPES[active.kind][active.rot % SHAPES[active.kind].length];
+  for (const [dr, dc] of cells) {
+    const rr = active.r + dr;
+    const cc = active.c + dc;
+    if (rr >= 0 && rr < ROWS && cc >= 0 && cc < COLS) {
+      snapshot[rr][cc] = active.kind;
+    }
+  }
+  return snapshot;
+}
+
+function SpectatorBoard({ player }: { player: TetrisPlayerScreen }) {
+  const visible = player.board.slice(2);
+  return (
+    <article className="rounded-xl border border-white/10 bg-[#121827] p-3">
+      <div className="mb-2 flex items-center justify-between">
+        <p className="truncate text-sm font-medium text-[#e8ecff]">{player.name}</p>
+        <span className="rounded-md border border-white/10 px-2 py-0.5 text-[11px] text-[#b6c2de]">
+          {player.phase}
+        </span>
+      </div>
+      <div
+        className="grid gap-px rounded-md bg-[#0d1018] p-1"
+        style={{ gridTemplateColumns: `repeat(${COLS}, minmax(0, 1fr))` }}
+      >
+        {visible.flatMap((row, r) =>
+          row.map((cell, c) => (
+            <div
+              key={`${player.id}-${r}-${c}`}
+              className="aspect-square rounded-[2px]"
+              style={{
+                backgroundColor: cell ? COLORS[cell] ?? "#6b7280" : "#1a2235",
+              }}
+            />
+          ))
+        )}
+      </div>
+      <p className="mt-2 text-xs text-[#8f9bb7]">
+        Skor {player.score} · Baris {player.lines} · Level {player.level}
+      </p>
+    </article>
+  );
 }
 
 export function TetrisGame() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const boardRef = useRef<Cell[][]>(emptyBoard());
+  const { selfId, tetrisState, sendTetrisSnapshot, connected, users } = useRealtime();
+  const boardRef = useRef<TetrisCell[][]>(emptyBoard());
   const activeRef = useRef<Active | null>(null);
   const nextRef = useRef<string>("T");
   const bagRef = useRef<string[]>([]);
   const dropRef = useRef(800);
   const stateRef = useRef<GameState>("menu");
   const prevPlayingRef = useRef(false);
+  const lastSnapshotMsRef = useRef(0);
 
   const [score, setScore] = useState(0);
   const [lines, setLines] = useState(0);
   const [level, setLevel] = useState(1);
   const [gameState, setGameState] = useState<GameState>("menu");
+
+  const otherPlayingBoards = useMemo(() => {
+    return (tetrisState?.players ?? []).filter(
+      (p) => p.id !== selfId && (p.phase === "playing" || p.phase === "paused")
+    );
+  }, [tetrisState, selfId]);
+
+  const onlineTetrisUsers = useMemo(
+    () => users.filter((u) => u.game === "tetris").length,
+    [users]
+  );
 
   const refill = useCallback(() => {
     const b = [...ORDER].sort(() => Math.random() - 0.5);
@@ -429,9 +493,10 @@ export function TetrisGame() {
     }
 
     const help = [
-      "← → : geser",
-      "↑ / X : putar",
-      "↓ : turun",
+      "A / D : geser",
+      "W : putar kanan",
+      "S : turun",
+      "Q : putar kiri",
       "Spasi : hard drop",
       "P : jeda",
       "ESC : menu",
@@ -471,6 +536,23 @@ export function TetrisGame() {
     if (!ctx) return;
     paint(ctx);
   }, [paint]);
+
+  const pushSnapshot = useCallback(
+    (force = false) => {
+      const now = Date.now();
+      if (!force && now - lastSnapshotMsRef.current < 120) return;
+      lastSnapshotMsRef.current = now;
+      sendTetrisSnapshot({
+        phase: stateRef.current,
+        score,
+        lines,
+        level,
+        board: composeBoardSnapshot(boardRef.current, activeRef.current),
+        next: nextRef.current ?? null,
+      });
+    },
+    [level, lines, score, sendTetrisSnapshot]
+  );
 
   const softDropOne = useCallback(() => {
     if (stateRef.current !== "playing") return;
@@ -536,15 +618,20 @@ export function TetrisGame() {
     }
     dropRef.current = 800;
     redraw();
-  }, [drawPiece, redraw, refill, spawn]);
+    pushSnapshot(true);
+  }, [drawPiece, pushSnapshot, redraw, refill, spawn]);
 
   useKeyboardState({
     active: true,
     onKeyDown: (key, event) => {
+      if (["w", "a", "s", "d", " "].includes(key)) {
+        event.preventDefault();
+      }
       if (key === "escape") {
         if (stateRef.current === "playing") {
           stateRef.current = "menu";
           setGameState("menu");
+          pushSnapshot(true);
         }
         return;
       }
@@ -556,6 +643,7 @@ export function TetrisGame() {
           stateRef.current = "playing";
           setGameState("playing");
         }
+        pushSnapshot(true);
         return;
       }
       if (key === "enter") {
@@ -567,23 +655,24 @@ export function TetrisGame() {
       if (stateRef.current === "paused") return;
       if (stateRef.current !== "playing") return;
 
-      if (key === "arrowleft") tryMove(-1);
-      else if (key === "arrowright") tryMove(1);
-      else if (key === "arrowdown") {
+      if (key === "a") tryMove(-1);
+      else if (key === "d") tryMove(1);
+      else if (key === "s") {
         const a = activeRef.current;
         if (a && fits(a.kind, a.rot, a.r + 1, a.c)) {
           a.r += 1;
           setScore((s) => s + 1);
         }
-      } else if (key === "arrowup" || key === "x") {
+      } else if (key === "w") {
         tryRotate();
-      } else if (key === "z") {
+      } else if (key === "q") {
         for (let i = 0; i < 3; i++) tryRotate();
       } else if (key === " ") {
         event.preventDefault();
         hardDrop();
       }
       redraw();
+      pushSnapshot();
     },
   });
 
@@ -602,6 +691,7 @@ export function TetrisGame() {
       }
       prevPlayingRef.current = playing;
       redraw();
+      pushSnapshot();
     },
   });
 
@@ -614,34 +704,64 @@ export function TetrisGame() {
 
   useEffect(() => {
     redraw();
-  }, [gameState, redraw]);
+    pushSnapshot(true);
+  }, [gameState, pushSnapshot, redraw]);
 
   return (
-    <div className="mx-auto flex max-w-4xl flex-col items-center px-4 py-8">
-      <h1 className="text-xl font-bold text-[#e8ecff]">Tetris</h1>
-      <p className="mt-2 text-center text-sm text-[#8f96ac]">
-        Parity Python: panah, X/Z, Spasi, P, ESC, ENTER.
-      </p>
-      <canvas
-        ref={canvasRef}
-        width={CW}
-        height={CH}
-        className="mt-4 max-w-full rounded-lg border border-[#2a3142]"
-      />
-      <div className="mt-4 flex gap-3">
-        {(gameState === "menu" || gameState === "game_over") && (
-          <button
-            type="button"
-            onClick={newGame}
-            className="rounded-lg bg-[#3d4860] px-4 py-2 text-sm text-white hover:bg-[#4d5a78]"
-          >
-            {gameState === "game_over" ? "Main lagi" : "Mulai"}
-          </button>
-        )}
+    <div className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6">
+      <div className="rounded-3xl border border-white/10 bg-[radial-gradient(circle_at_top,#2a2746_0%,#121423_56%,#0b0d12_100%)] p-6">
+        <h1 className="text-2xl font-semibold tracking-tight text-[#eef3ff]">Tetris Multiplayer</h1>
+        <p className="mt-2 text-sm text-[#9aa7c4]">
+          Setiap pemain punya board sendiri. Mode spectate menampilkan semua board aktif.
+          Kontrol: <span className="text-[#e8ecff]">WASD + Q + Spasi</span>.
+        </p>
+        <p className="mt-3 text-xs text-[#8a95b2]">
+          Realtime {connected ? "terhubung" : "terputus"} · user di room tetris: {onlineTetrisUsers}
+        </p>
       </div>
-      <p className="mt-2 text-sm text-[#8f96ac]">
-        {statusText} · Skor {score} · Baris {lines} · Level {level}
-      </p>
+
+      <div className="mt-6 grid gap-5 lg:grid-cols-[minmax(0,460px)_minmax(0,1fr)]">
+        <section className="rounded-2xl border border-white/10 bg-[#111726] p-4">
+          <canvas
+            ref={canvasRef}
+            width={CW}
+            height={CH}
+            className="max-w-full rounded-lg border border-[#2a3142]"
+          />
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            {(gameState === "menu" || gameState === "game_over") && (
+              <button
+                type="button"
+                onClick={newGame}
+                className="rounded-lg bg-[#3d4860] px-4 py-2 text-sm text-white hover:bg-[#4d5a78]"
+              >
+                {gameState === "game_over" ? "Main lagi" : "Mulai"}
+              </button>
+            )}
+            <p className="text-sm text-[#8f96ac]">
+              {statusText} · Skor {score} · Baris {lines} · Level {level}
+            </p>
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-white/10 bg-[#111726] p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-[#e9ecf4]">Spectate pemain lain</h2>
+            <span className="text-xs text-[#8f96ac]">{otherPlayingBoards.length} board aktif</span>
+          </div>
+          {otherPlayingBoards.length === 0 ? (
+            <p className="rounded-lg border border-dashed border-white/15 bg-[#0d1220] px-3 py-4 text-sm text-[#8f96ac]">
+              Belum ada pemain lain yang sedang bermain.
+            </p>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {otherPlayingBoards.map((player) => (
+                <SpectatorBoard key={player.id} player={player} />
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
     </div>
   );
 }

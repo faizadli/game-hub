@@ -30,11 +30,36 @@ type SnakeStart = {
   dir: Vec;
 };
 
+type TetrisPhase = "menu" | "playing" | "paused" | "game_over";
+type TetrisCell = string | null;
+type TetrisBoard = TetrisCell[][];
+
+type TetrisSnapshot = {
+  id: string;
+  name: string;
+  phase: TetrisPhase;
+  score: number;
+  lines: number;
+  level: number;
+  board: TetrisBoard;
+  next: string | null;
+  updatedAt: number;
+};
+
 type IncomingMessage =
   | { type: "hello"; name: string }
   | { type: "page"; page: string }
   | { type: "ready"; value: boolean }
-  | { type: "direction"; dir: string };
+  | { type: "direction"; dir: string }
+  | {
+      type: "tetris_snapshot";
+      phase: string;
+      score: number;
+      lines: number;
+      level: number;
+      board: unknown;
+      next: string | null;
+    };
 
 export interface Env {
   LOBBY_ROOM: DurableObjectNamespace<LobbyRoom>;
@@ -67,6 +92,7 @@ export default worker;
 export class LobbyRoom extends DurableObject {
   private clients = new Map<WebSocket, ClientState>();
   private players = new Map<string, SnakePlayer>();
+  private tetrisScreens = new Map<string, TetrisSnapshot>();
   private phase: SnakePhase = "lobby";
   private round = 0;
   private winnerId: string | null = null;
@@ -115,6 +141,7 @@ export class LobbyRoom extends DurableObject {
     ws.addEventListener("error", () => this.removeClient(ws));
     this.broadcastPresence();
     this.broadcastSnakeState();
+    this.broadcastTetrisState();
   }
 
   private handleMessage(ws: WebSocket, msg: unknown) {
@@ -128,9 +155,12 @@ export class LobbyRoom extends DurableObject {
       c.name = name;
       const p = this.players.get(c.id);
       if (p) p.name = name;
+      const screen = this.tetrisScreens.get(c.id);
+      if (screen) screen.name = name;
       this.send(ws, { type: "name_ack", name, adjusted: name !== requestedName });
       this.broadcastPresence();
       this.broadcastSnakeState();
+      this.broadcastTetrisState();
       return;
     }
 
@@ -139,8 +169,10 @@ export class LobbyRoom extends DurableObject {
       c.page = page;
       c.game = this.toGame(page);
       this.syncPlayerPresence(c.id);
+      this.syncTetrisPresence(c.id);
       this.broadcastPresence();
       this.broadcastSnakeState();
+      this.broadcastTetrisState();
       return;
     }
 
@@ -153,6 +185,24 @@ export class LobbyRoom extends DurableObject {
       this.setDirection(c.id, data.dir);
       return;
     }
+
+    if (
+      data.type === "tetris_snapshot" &&
+      typeof data.phase === "string" &&
+      typeof data.score === "number" &&
+      typeof data.lines === "number" &&
+      typeof data.level === "number"
+    ) {
+      this.setTetrisSnapshot(c.id, {
+        phase: data.phase,
+        score: data.score,
+        lines: data.lines,
+        level: data.level,
+        board: data.board,
+        next: typeof data.next === "string" ? data.next : null,
+      });
+      return;
+    }
   }
 
   private removeClient(ws: WebSocket) {
@@ -160,9 +210,12 @@ export class LobbyRoom extends DurableObject {
     if (!c) return;
     this.clients.delete(ws);
     this.players.delete(c.id);
+    this.tetrisScreens.delete(c.id);
     this.syncAfterLeave();
+    this.syncTetrisAfterLeave();
     this.broadcastPresence();
     this.broadcastSnakeState();
+    this.broadcastTetrisState();
   }
 
   private toGame(path: string): GameSlug {
@@ -221,6 +274,84 @@ export class LobbyRoom extends DurableObject {
       if (c.game === "snake") ids.add(c.id);
     }
     return ids;
+  }
+
+  private tetrisPageUserIds() {
+    const ids = new Set<string>();
+    for (const c of this.clients.values()) {
+      if (c.game === "tetris") ids.add(c.id);
+    }
+    return ids;
+  }
+
+  private sanitizeTetrisPhase(input: string): TetrisPhase {
+    if (input === "playing") return "playing";
+    if (input === "paused") return "paused";
+    if (input === "game_over") return "game_over";
+    return "menu";
+  }
+
+  private sanitizeTetrisBoard(input: unknown): TetrisBoard {
+    if (!Array.isArray(input)) {
+      return Array.from({ length: 22 }, () => Array<TetrisCell>(10).fill(null));
+    }
+    const rows = 22;
+    const cols = 10;
+    const safe: TetrisBoard = [];
+    for (let r = 0; r < rows; r++) {
+      const srcRow = Array.isArray(input[r]) ? input[r] : [];
+      const row: TetrisCell[] = [];
+      for (let c = 0; c < cols; c++) {
+        const raw = srcRow[c];
+        row.push(typeof raw === "string" ? raw.slice(0, 1) : null);
+      }
+      safe.push(row);
+    }
+    return safe;
+  }
+
+  private syncTetrisPresence(id: string) {
+    const inTetris = this.tetrisPageUserIds().has(id);
+    if (!inTetris) {
+      this.tetrisScreens.delete(id);
+    }
+  }
+
+  private syncTetrisAfterLeave() {
+    const tetrisUsers = this.tetrisPageUserIds();
+    for (const id of this.tetrisScreens.keys()) {
+      if (!tetrisUsers.has(id)) this.tetrisScreens.delete(id);
+    }
+  }
+
+  private setTetrisSnapshot(
+    id: string,
+    payload: {
+      phase: string;
+      score: number;
+      lines: number;
+      level: number;
+      board: unknown;
+      next: string | null;
+    }
+  ) {
+    const inTetris = this.tetrisPageUserIds().has(id);
+    if (!inTetris) return;
+    const c = [...this.clients.values()].find((x) => x.id === id);
+    if (!c) return;
+
+    this.tetrisScreens.set(id, {
+      id,
+      name: c.name,
+      phase: this.sanitizeTetrisPhase(payload.phase),
+      score: Math.max(0, Math.floor(payload.score)),
+      lines: Math.max(0, Math.floor(payload.lines)),
+      level: Math.max(1, Math.floor(payload.level)),
+      board: this.sanitizeTetrisBoard(payload.board),
+      next: payload.next ? payload.next.slice(0, 1) : null,
+      updatedAt: Date.now(),
+    });
+    this.broadcastTetrisState();
   }
 
   private syncPlayerPresence(id: string) {
@@ -534,6 +665,19 @@ export class LobbyRoom extends DurableObject {
       round: this.round,
       rows: this.rows,
       cols: this.cols,
+    });
+  }
+
+  private broadcastTetrisState() {
+    const tetrisUsers = this.tetrisPageUserIds();
+    const players = [...this.tetrisScreens.values()]
+      .filter((screen) => tetrisUsers.has(screen.id))
+      .sort((a, b) => b.updatedAt - a.updatedAt);
+    this.broadcast({
+      type: "tetris_state",
+      rows: 22,
+      cols: 10,
+      players,
     });
   }
 

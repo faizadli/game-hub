@@ -17,7 +17,7 @@ export const GAMES: GameMeta[] = [
   {
     slug: "tetris",
     title: "Tetris",
-    description: "Blok klasik — panah, putar, spasi.",
+    description: "Blok klasik multiplayer — WASD, Q, Spasi.",
     accent: "#c792ea",
     icon: "▣",
   },

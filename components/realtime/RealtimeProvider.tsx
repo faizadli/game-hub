@@ -15,6 +15,9 @@ import type {
   GameSlug,
   PresenceUser,
   SnakeRealtimeState,
+  TetrisBoard,
+  TetrisPhase,
+  TetrisRealtimeState,
 } from "@/lib/realtime/types";
 
 type RealtimeContextValue = {
@@ -25,8 +28,17 @@ type RealtimeContextValue = {
   users: PresenceUser[];
   counts: GameCounts;
   snakeState: SnakeRealtimeState | null;
+  tetrisState: TetrisRealtimeState | null;
   sendSnakeReady: (value: boolean) => void;
   sendSnakeDirection: (dir: "up" | "down" | "left" | "right") => void;
+  sendTetrisSnapshot: (payload: {
+    phase: TetrisPhase;
+    score: number;
+    lines: number;
+    level: number;
+    board: TetrisBoard;
+    next: string | null;
+  }) => void;
 };
 
 const defaultCounts: GameCounts = {
@@ -74,6 +86,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const [users, setUsers] = useState<PresenceUser[]>([]);
   const [counts, setCounts] = useState<GameCounts>(defaultCounts);
   const [snakeState, setSnakeState] = useState<SnakeRealtimeState | null>(null);
+  const [tetrisState, setTetrisState] = useState<TetrisRealtimeState | null>(null);
 
   const setUsername = useCallback((name: string) => {
     const cleaned = name.trim().slice(0, 24);
@@ -128,6 +141,8 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
           setCounts(msg.counts ?? defaultCounts);
         } else if (msg.type === "snake_state") {
           setSnakeState(msg);
+        } else if (msg.type === "tetris_state") {
+          setTetrisState(msg);
         }
       } catch {
         // ignore malformed payload
@@ -139,6 +154,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       reconnectRef.current = window.setTimeout(() => {
         setSelfId(null);
         setSnakeState(null);
+        setTetrisState(null);
         setCounts(defaultCounts);
       }, 1200);
     };
@@ -172,6 +188,27 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
+  const sendTetrisSnapshot = useCallback(
+    (payload: {
+      phase: TetrisPhase;
+      score: number;
+      lines: number;
+      level: number;
+      board: TetrisBoard;
+      next: string | null;
+    }) => {
+      const ws = socketRef.current;
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
+      ws.send(
+        JSON.stringify({
+          type: "tetris_snapshot",
+          ...payload,
+        })
+      );
+    },
+    []
+  );
+
   const value = useMemo<RealtimeContextValue>(
     () => ({
       connected,
@@ -181,8 +218,10 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       users,
       counts,
       snakeState,
+      tetrisState,
       sendSnakeReady,
       sendSnakeDirection,
+      sendTetrisSnapshot,
     }),
     [
       connected,
@@ -192,8 +231,10 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       users,
       counts,
       snakeState,
+      tetrisState,
       sendSnakeReady,
       sendSnakeDirection,
+      sendTetrisSnapshot,
     ]
   );
 

@@ -38,3 +38,27 @@ export type SnakeRealtimeState = {
   rows: number;
   cols: number;
 };
+
+export type TetrisPhase = "menu" | "playing" | "paused" | "game_over";
+
+export type TetrisCell = string | null;
+
+export type TetrisBoard = TetrisCell[][];
+
+export type TetrisPlayerScreen = {
+  id: string;
+  name: string;
+  phase: TetrisPhase;
+  score: number;
+  lines: number;
+  level: number;
+  board: TetrisBoard;
+  next: string | null;
+  updatedAt: number;
+};
+
+export type TetrisRealtimeState = {
+  rows: number;
+  cols: number;
+  players: TetrisPlayerScreen[];
+};
