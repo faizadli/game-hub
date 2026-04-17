@@ -2,7 +2,7 @@
 
 Project ini berisi:
 
-- Game Hub + game browser (`snake`, `tetris`, `typing`, `minecraft`)
+- Game Hub + game browser (`snake`, `tetris`)
 - Realtime multiplayer untuk **Snake** menggunakan **Cloudflare Durable Objects**
 - Tanpa akun/register dan tanpa database tradisional
 

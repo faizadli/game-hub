@@ -21,18 +21,4 @@ export const GAMES: GameMeta[] = [
     accent: "#c792ea",
     icon: "▣",
   },
-  {
-    slug: "typing",
-    title: "Typing Shooter",
-    description: "Ketik kata Indonesia — musuh turun.",
-    accent: "#ffab6b",
-    icon: "⌁",
-  },
-  {
-    slug: "minecraft",
-    title: "Blok sandbox 2D",
-    description: "Gali & bangun — A/D, lompat, klik.",
-    accent: "#9acd32",
-    icon: "▦",
-  },
 ];

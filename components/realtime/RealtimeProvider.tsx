@@ -47,8 +47,6 @@ const defaultCounts: GameCounts = {
   hub: 0,
   snake: 0,
   tetris: 0,
-  typing: 0,
-  minecraft: 0,
 };
 
 const Ctx = createContext<RealtimeContextValue | null>(null);
@@ -56,8 +54,6 @@ const Ctx = createContext<RealtimeContextValue | null>(null);
 function toGame(pathname: string): GameSlug {
   if (pathname.startsWith("/games/snake")) return "snake";
   if (pathname.startsWith("/games/tetris")) return "tetris";
-  if (pathname.startsWith("/games/typing")) return "typing";
-  if (pathname.startsWith("/games/minecraft")) return "minecraft";
   return "hub";
 }
 

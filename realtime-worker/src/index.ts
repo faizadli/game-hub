@@ -1,6 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 
-type GameSlug = "hub" | "snake" | "tetris" | "typing" | "minecraft";
+type GameSlug = "hub" | "snake" | "tetris";
 type SnakePhase = "lobby" | "playing" | "finished";
 
 type ClientState = {
@@ -246,8 +246,6 @@ export class LobbyRoom extends DurableObject {
   private toGame(path: string): GameSlug {
     if (path.startsWith("/games/snake")) return "snake";
     if (path.startsWith("/games/tetris")) return "tetris";
-    if (path.startsWith("/games/typing")) return "typing";
-    if (path.startsWith("/games/minecraft")) return "minecraft";
     return "hub";
   }
 
@@ -798,8 +796,6 @@ export class LobbyRoom extends DurableObject {
       hub: users.filter((u) => u.game === "hub").length,
       snake: users.filter((u) => u.game === "snake").length,
       tetris: users.filter((u) => u.game === "tetris").length,
-      typing: users.filter((u) => u.game === "typing").length,
-      minecraft: users.filter((u) => u.game === "minecraft").length,
     };
     this.broadcast({ type: "presence", users, counts });
   }
