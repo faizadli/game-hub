@@ -64,6 +64,18 @@ function wsUrlFromBase(base: string): string {
   return `ws://${base}/ws`;
 }
 
+function getOrCreateSessionKey() {
+  const key = "games_web_session_key";
+  const existing = localStorage.getItem(key);
+  if (existing) return existing;
+  const generated =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `sess-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  localStorage.setItem(key, generated);
+  return generated;
+}
+
 export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const socketRef = useRef<WebSocket | null>(null);
@@ -90,7 +102,13 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     setUsernameState(cleaned);
     localStorage.setItem("games_web_username", cleaned);
     if (socketRef.current?.readyState === WebSocket.OPEN) {
-      socketRef.current.send(JSON.stringify({ type: "hello", name: cleaned }));
+      socketRef.current.send(
+        JSON.stringify({
+          type: "hello",
+          name: cleaned,
+          session: getOrCreateSessionKey(),
+        })
+      );
     }
   }, []);
 
@@ -118,7 +136,13 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
 
     ws.onopen = () => {
       setConnected(true);
-      ws.send(JSON.stringify({ type: "hello", name: username }));
+      ws.send(
+        JSON.stringify({
+          type: "hello",
+          name: username,
+          session: getOrCreateSessionKey(),
+        })
+      );
       helloSentRef.current = true;
       ws.send(JSON.stringify({ type: "page", page: pathnameRef.current }));
     };
