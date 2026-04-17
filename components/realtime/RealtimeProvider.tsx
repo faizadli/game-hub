@@ -117,6 +117,12 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
         const msg = JSON.parse(event.data);
         if (msg.type === "welcome" && typeof msg.id === "string") {
           setSelfId(msg.id);
+        } else if (msg.type === "name_ack" && typeof msg.name === "string") {
+          setUsernameState((prev) => {
+            if (prev === msg.name) return prev;
+            localStorage.setItem("games_web_username", msg.name);
+            return msg.name;
+          });
         } else if (msg.type === "presence") {
           setUsers(Array.isArray(msg.users) ? msg.users : []);
           setCounts(msg.counts ?? defaultCounts);

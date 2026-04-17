@@ -96,6 +96,11 @@ export class LobbyRoom extends DurableObject {
     const id = crypto.randomUUID();
     this.clients.set(ws, { id, name: "Guest", page: "/", game: "hub" });
     this.ensurePlayer(id, "Guest");
+    const guestName = this.getUniqueName("Guest", id);
+    const clientState = this.clients.get(ws);
+    if (clientState) clientState.name = guestName;
+    const player = this.players.get(id);
+    if (player) player.name = guestName;
     this.send(ws, { type: "welcome", id });
 
     ws.addEventListener("message", (event) => {
@@ -118,10 +123,12 @@ export class LobbyRoom extends DurableObject {
     const data = msg as Partial<IncomingMessage> & { type?: string };
 
     if (data.type === "hello" && typeof data.name === "string") {
-      const name = data.name.trim().slice(0, 24) || "Guest";
+      const requestedName = data.name.trim().slice(0, 24) || "Guest";
+      const name = this.getUniqueName(requestedName, c.id);
       c.name = name;
       const p = this.players.get(c.id);
       if (p) p.name = name;
+      this.send(ws, { type: "name_ack", name, adjusted: name !== requestedName });
       this.broadcastPresence();
       this.broadcastSnakeState();
       return;
@@ -179,6 +186,33 @@ export class LobbyRoom extends DurableObject {
       pending: { dr: 0, dc: 1 },
       segments: [],
     });
+  }
+
+  private normalizeName(name: string) {
+    return name.trim().toLowerCase();
+  }
+
+  private isNameTaken(name: string, exceptId: string) {
+    const target = this.normalizeName(name);
+    for (const c of this.clients.values()) {
+      if (c.id === exceptId) continue;
+      if (this.normalizeName(c.name) === target) return true;
+    }
+    return false;
+  }
+
+  private getUniqueName(input: string, id: string) {
+    const cleaned = input.trim().slice(0, 24) || "Guest";
+    if (!this.isNameTaken(cleaned, id)) return cleaned;
+
+    const safeBase = cleaned.replace(/-\d+$/, "").slice(0, 20) || "Guest";
+    let suffix = 2;
+    while (suffix < 9999) {
+      const candidate = `${safeBase}-${suffix}`.slice(0, 24);
+      if (!this.isNameTaken(candidate, id)) return candidate;
+      suffix += 1;
+    }
+    return `${safeBase}-${Date.now().toString().slice(-4)}`.slice(0, 24);
   }
 
   private snakePageUserIds() {

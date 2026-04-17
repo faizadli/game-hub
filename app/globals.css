@@ -13,6 +13,10 @@
 }
 
 body {
-  background: var(--background);
+  background:
+    radial-gradient(circle at 10% 0%, rgba(67, 97, 176, 0.2), transparent 34%),
+    radial-gradient(circle at 90% 100%, rgba(72, 184, 193, 0.12), transparent 26%),
+    var(--background);
   color: var(--foreground);
+  min-height: 100vh;
 }
