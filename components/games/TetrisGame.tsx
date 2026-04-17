@@ -2,9 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useKeyboardState } from "@/lib/game/useKeyboardState";
-import { useRafTicker } from "@/lib/game/useRafTicker";
 import { useRealtime } from "@/components/realtime/RealtimeProvider";
-import type { TetrisBoard, TetrisCell, TetrisPlayerScreen } from "@/lib/realtime/types";
+import type { TetrisBoard, TetrisPlayerScreen } from "@/lib/realtime/types";
 
 const COLS = 10;
 const ROWS = 22;
@@ -13,9 +12,6 @@ const PANEL_W = 160;
 const CW = COLS * CELL + PANEL_W;
 const CH = (ROWS - 2) * CELL;
 const SIDEBAR_X = COLS * CELL + 12;
-
-type GameState = "menu" | "playing" | "paused" | "game_over";
-type Active = { kind: string; r: number; c: number; rot: number };
 const COLORS: Record<string, string> = {
   I: "#00f0f0",
   O: "#f0f000",
@@ -26,212 +22,8 @@ const COLORS: Record<string, string> = {
   L: "#f0a000",
 };
 
-const SHAPES: Record<string, [number, number][][]> = {
-  I: [
-    [
-      [0, 1],
-      [1, 1],
-      [2, 1],
-      [3, 1],
-    ],
-    [
-      [2, 0],
-      [2, 1],
-      [2, 2],
-      [2, 3],
-    ],
-    [
-      [0, 2],
-      [1, 2],
-      [2, 2],
-      [3, 2],
-    ],
-    [
-      [1, 0],
-      [1, 1],
-      [1, 2],
-      [1, 3],
-    ],
-  ],
-  O: [
-    [
-      [0, 0],
-      [1, 0],
-      [0, 1],
-      [1, 1],
-    ],
-    [
-      [0, 0],
-      [1, 0],
-      [0, 1],
-      [1, 1],
-    ],
-    [
-      [0, 0],
-      [1, 0],
-      [0, 1],
-      [1, 1],
-    ],
-    [
-      [0, 0],
-      [1, 0],
-      [0, 1],
-      [1, 1],
-    ],
-  ],
-  T: [
-    [
-      [1, 0],
-      [0, 1],
-      [1, 1],
-      [2, 1],
-    ],
-    [
-      [1, 0],
-      [1, 1],
-      [2, 1],
-      [1, 2],
-    ],
-    [
-      [0, 1],
-      [1, 1],
-      [2, 1],
-      [1, 2],
-    ],
-    [
-      [1, 0],
-      [0, 1],
-      [1, 1],
-      [1, 2],
-    ],
-  ],
-  S: [
-    [
-      [1, 0],
-      [2, 0],
-      [0, 1],
-      [1, 1],
-    ],
-    [
-      [1, 0],
-      [1, 1],
-      [2, 1],
-      [2, 2],
-    ],
-    [
-      [1, 1],
-      [2, 1],
-      [0, 2],
-      [1, 2],
-    ],
-    [
-      [0, 0],
-      [0, 1],
-      [1, 1],
-      [1, 2],
-    ],
-  ],
-  Z: [
-    [
-      [0, 0],
-      [1, 0],
-      [1, 1],
-      [2, 1],
-    ],
-    [
-      [2, 0],
-      [1, 1],
-      [2, 1],
-      [1, 2],
-    ],
-    [
-      [0, 1],
-      [1, 1],
-      [1, 2],
-      [2, 2],
-    ],
-    [
-      [1, 0],
-      [0, 1],
-      [1, 1],
-      [0, 2],
-    ],
-  ],
-  J: [
-    [
-      [0, 0],
-      [0, 1],
-      [1, 1],
-      [2, 1],
-    ],
-    [
-      [1, 0],
-      [2, 0],
-      [1, 1],
-      [1, 2],
-    ],
-    [
-      [0, 1],
-      [1, 1],
-      [2, 1],
-      [2, 2],
-    ],
-    [
-      [1, 0],
-      [1, 1],
-      [0, 2],
-      [1, 2],
-    ],
-  ],
-  L: [
-    [
-      [2, 0],
-      [0, 1],
-      [1, 1],
-      [2, 1],
-    ],
-    [
-      [1, 0],
-      [1, 1],
-      [1, 2],
-      [2, 2],
-    ],
-    [
-      [0, 1],
-      [1, 1],
-      [2, 1],
-      [0, 2],
-    ],
-    [
-      [0, 0],
-      [1, 0],
-      [1, 1],
-      [1, 2],
-    ],
-  ],
-};
-
-const ORDER = ["I", "O", "T", "S", "Z", "J", "L"] as const;
-
-function emptyBoard(): TetrisCell[][] {
-  return Array.from({ length: ROWS }, () => Array<TetrisCell>(COLS).fill(null));
-}
-
-function composeBoardSnapshot(
-  board: TetrisCell[][],
-  active: Active | null
-): TetrisBoard {
-  const snapshot = board.map((row) => row.slice());
-  if (!active) return snapshot;
-  const cells = SHAPES[active.kind][active.rot % SHAPES[active.kind].length];
-  for (const [dr, dc] of cells) {
-    const rr = active.r + dr;
-    const cc = active.c + dc;
-    if (rr >= 0 && rr < ROWS && cc >= 0 && cc < COLS) {
-      snapshot[rr][cc] = active.kind;
-    }
-  }
-  return snapshot;
+function emptyBoard(): TetrisBoard {
+  return Array.from({ length: ROWS }, () => Array<string | null>(COLS).fill(null));
 }
 
 function SpectatorBoard({ player }: { player: TetrisPlayerScreen }) {
@@ -269,36 +61,11 @@ function SpectatorBoard({ player }: { player: TetrisPlayerScreen }) {
 
 export function TetrisGame() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const {
-    selfId,
-    tetrisState,
-    sendTetrisSnapshot,
-    sendTetrisReady,
-    connected,
-    users,
-  } = useRealtime();
-  const boardRef = useRef<TetrisCell[][]>(emptyBoard());
-  const activeRef = useRef<Active | null>(null);
-  const nextRef = useRef<string>("T");
-  const bagRef = useRef<string[]>([]);
-  const dropRef = useRef(800);
-  const stateRef = useRef<GameState>("menu");
-  const prevPlayingRef = useRef(false);
-  const lastSnapshotMsRef = useRef(0);
-  const startedRoundRef = useRef<number>(-1);
-  const hiddenTickLastMsRef = useRef<number>(0);
-
-  const [score, setScore] = useState(0);
-  const [lines, setLines] = useState(0);
-  const [level, setLevel] = useState(1);
-  const [gameState, setGameState] = useState<GameState>("menu");
+  const { selfId, tetrisState, sendTetrisReady, sendTetrisInput, connected, users } = useRealtime();
   const [showWinnerPopup, setShowWinnerPopup] = useState(false);
   const [showLosePopup, setShowLosePopup] = useState(false);
   const [watchAfterLose, setWatchAfterLose] = useState(false);
   const [winnerPopupText, setWinnerPopupText] = useState("");
-  const queueGameState = useCallback((next: GameState) => {
-    queueMicrotask(() => setGameState(next));
-  }, []);
   const queueWinnerPopup = useCallback((message: string) => {
     queueMicrotask(() => {
       setWinnerPopupText(message);
@@ -312,11 +79,17 @@ export function TetrisGame() {
     () => (tetrisState?.roster ?? []).find((p) => p.id === selfId) ?? null,
     [selfId, tetrisState]
   );
-  const canPlayThisRound = !!myRoomState?.active && !myRoomState?.spectator;
+  const canPlayThisRound = !!myRoomState?.active && !myRoomState?.spectator && !myRoomState?.done;
   const isSpectatorMode = !!myRoomState?.spectator && tetrisState?.phase === "playing";
   const lostWhileRoundPlaying =
     tetrisState?.phase === "playing" && !!myRoomState?.active && !!myRoomState?.done;
   const shouldShowSpectatorView = isSpectatorMode || (lostWhileRoundPlaying && watchAfterLose);
+
+  const myScreen = useMemo(
+    () => (tetrisState?.players ?? []).find((p) => p.id === selfId) ?? null,
+    [selfId, tetrisState]
+  );
+  const myBoard = myScreen?.board ?? emptyBoard();
 
   const otherPlayingBoards = useMemo(() => {
     return (tetrisState?.players ?? []).filter(
@@ -337,92 +110,6 @@ export function TetrisGame() {
     [users]
   );
 
-  const refill = useCallback(() => {
-    const b = [...ORDER].sort(() => Math.random() - 0.5);
-    bagRef.current = b;
-  }, []);
-
-  const drawPiece = useCallback(() => {
-    if (!bagRef.current.length) refill();
-    return bagRef.current.pop()!;
-  }, [refill]);
-
-  const fits = useCallback((kind: string, rot: number, r: number, c: number) => {
-    const cells = SHAPES[kind][rot % SHAPES[kind].length];
-    const b = boardRef.current;
-    for (const [dr, dc] of cells) {
-      const rr = r + dr;
-      const cc = c + dc;
-      if (cc < 0 || cc >= COLS || rr >= ROWS) return false;
-      if (rr >= 0 && b[rr][cc]) return false;
-    }
-    return true;
-  }, []);
-
-  const spawn = useCallback(() => {
-    const kind = nextRef.current;
-    nextRef.current = drawPiece();
-    for (const sr of [0, -1, 1, -2]) {
-      if (fits(kind, 0, sr, 3)) {
-        activeRef.current = { kind, r: sr, c: 3, rot: 0 };
-        return true;
-      }
-    }
-    return false;
-  }, [drawPiece, fits]);
-
-  const lock = useCallback(() => {
-    const a = activeRef.current;
-    if (!a) return;
-    const cells = SHAPES[a.kind][a.rot % SHAPES[a.kind].length];
-    const b = boardRef.current;
-    for (const [dr, dc] of cells) {
-      const rr = a.r + dr;
-      const cc = a.c + dc;
-      if (rr < 0) {
-        stateRef.current = "game_over";
-        setGameState("game_over");
-        activeRef.current = null;
-        return;
-      }
-      if (rr >= 0 && rr < ROWS) b[rr][cc] = a.kind;
-    }
-    let cleared = 0;
-    let y = ROWS - 1;
-    while (y >= 0) {
-      if (b[y].every((x) => x !== null)) {
-        cleared++;
-        b.splice(y, 1);
-        b.unshift(Array(COLS).fill(null));
-      } else y--;
-    }
-    if (cleared) {
-      const add = [0, 100, 300, 500, 800][cleared] ?? 0;
-      setScore((s) => s + add * level);
-      setLines((l) => {
-        const nl = l + cleared;
-        setLevel(1 + Math.floor(nl / 10));
-        return nl;
-      });
-    }
-    activeRef.current = null;
-    if (!spawn()) {
-      stateRef.current = "game_over";
-      setGameState("game_over");
-      activeRef.current = null;
-      return;
-    }
-    dropRef.current = Math.max(50, 800 - (level - 1) * 70);
-  }, [level, spawn]);
-
-  const ghostPiece = useCallback((a: Active) => {
-    let g = { ...a };
-    while (fits(g.kind, g.rot, g.r + 1, g.c)) {
-      g = { ...g, r: g.r + 1 };
-    }
-    return g;
-  }, [fits]);
-
   const drawCell = useCallback(
     (
       ctx: CanvasRenderingContext2D,
@@ -439,100 +126,45 @@ export function TetrisGame() {
     []
   );
 
-  const paint = useCallback((ctx: CanvasRenderingContext2D) => {
-    const vis = 2;
+  const paint = useCallback((ctx: CanvasRenderingContext2D, board: TetrisBoard, screen: TetrisPlayerScreen | null) => {
     ctx.fillStyle = "#1a1d28";
     ctx.fillRect(0, 0, CW, CH);
 
-    const b = boardRef.current;
-    for (let r = vis; r < ROWS; r++) {
+    for (let r = 2; r < ROWS; r++) {
       for (let c = 0; c < COLS; c++) {
-        const cell = b[r][c];
-        const y = (r - vis) * CELL;
+        const cell = board[r][c];
+        const y = (r - 2) * CELL;
         const x = c * CELL;
         const color = cell ? COLORS[cell] ?? "#666" : "#252830";
         drawCell(ctx, x, y, color);
       }
     }
-
-    if (stateRef.current === "menu") {
-      ctx.fillStyle = "#0c0e14";
-      ctx.fillRect(0, 0, CW, CH);
-      ctx.fillStyle = "#e8ecff";
-      ctx.font = "700 18px Segoe UI";
-      ctx.textAlign = "center";
-      ctx.fillText("TETRIS", (COLS * CELL) / 2, CH / 2 - 60);
-      ctx.fillStyle = "#90c0ff";
-      ctx.font = "14px Segoe UI";
-      ctx.fillText("ENTER — mulai", (COLS * CELL) / 2, CH / 2 - 10);
-      ctx.fillStyle = "#7080a0";
-      ctx.fillText("ESC — keluar", (COLS * CELL) / 2, CH / 2 + 20);
-      return;
-    }
-
-    const a = activeRef.current;
-    if (a && ["playing", "paused", "game_over"].includes(stateRef.current)) {
-      const g = ghostPiece(a);
-      const ghostCells = SHAPES[g.kind][g.rot % SHAPES[g.kind].length];
-      for (const [dr, dc] of ghostCells) {
-        const rr = g.r + dr;
-        const cc = g.c + dc;
-        if (rr < vis) continue;
-        const x = cc * CELL;
-        const y = (rr - vis) * CELL;
-        drawCell(ctx, x, y, "#303040");
-        ctx.strokeStyle = COLORS[a.kind] ?? "#fff";
-        ctx.strokeRect(x + 2, y + 2, CELL - 4, CELL - 4);
-      }
-
-      const cells = SHAPES[a.kind][a.rot % SHAPES[a.kind].length];
-      for (const [dr, dc] of cells) {
-        const r = a.r + dr;
-        const c = a.c + dc;
-        if (r < vis) continue;
-        const y = (r - vis) * CELL;
-        const x = c * CELL;
-        drawCell(ctx, x, y, COLORS[a.kind] ?? "#fff");
-      }
-    }
-
     ctx.fillStyle = "#c8d0e0";
     ctx.font = "14px system-ui";
     ctx.textAlign = "left";
     ctx.fillText("Skor", SIDEBAR_X, 16);
     ctx.fillStyle = "#ffffff";
     ctx.font = "700 20px Segoe UI";
-    ctx.fillText(String(score), SIDEBAR_X, 38);
+    ctx.fillText(String(screen?.score ?? 0), SIDEBAR_X, 38);
     ctx.fillStyle = "#c8d0e0";
     ctx.font = "14px Segoe UI";
     ctx.fillText("Baris", SIDEBAR_X, 86);
     ctx.fillStyle = "#ffffff";
     ctx.font = "700 20px Segoe UI";
-    ctx.fillText(String(lines), SIDEBAR_X, 108);
+    ctx.fillText(String(screen?.lines ?? 0), SIDEBAR_X, 108);
     ctx.fillStyle = "#c8d0e0";
     ctx.font = "14px Segoe UI";
     ctx.fillText("Level", SIDEBAR_X, 156);
     ctx.fillStyle = "#ffffff";
     ctx.font = "700 20px Segoe UI";
-    ctx.fillText(String(level), SIDEBAR_X, 178);
+    ctx.fillText(String(screen?.level ?? 1), SIDEBAR_X, 178);
 
     ctx.fillStyle = "#c8d0e0";
     ctx.font = "14px Segoe UI";
     ctx.fillText("Berikut", SIDEBAR_X, 234);
-    const shape = SHAPES[nextRef.current][0];
-    const minR = Math.min(...shape.map((v) => v[0]));
-    const minC = Math.min(...shape.map((v) => v[1]));
-    const pCell = CELL / 2;
-    for (const [dr, dc] of shape) {
-      const rr = dr - minR;
-      const cc = dc - minC;
-      const x0 = SIDEBAR_X + cc * pCell;
-      const y0 = 250 + rr * pCell;
-      ctx.fillStyle = COLORS[nextRef.current] ?? "#fff";
-      ctx.fillRect(x0, y0, pCell, pCell);
-      ctx.strokeStyle = "#3a4050";
-      ctx.strokeRect(x0, y0, pCell, pCell);
-    }
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "700 28px Segoe UI";
+    ctx.fillText(screen?.next ?? "-", SIDEBAR_X + 20, 274);
 
     const help = [
       "A / D : geser",
@@ -540,8 +172,8 @@ export function TetrisGame() {
       "S : turun",
       "Q : putar kiri",
       "Spasi : hard drop",
-      "P : jeda",
-      "ESC : menu",
+      "P : kirim pause",
+      "ENTER : ready",
     ];
     ctx.fillStyle = "#8890a8";
     ctx.font = "12px Segoe UI";
@@ -551,125 +183,37 @@ export function TetrisGame() {
       hy += 16;
     }
 
-    if (stateRef.current === "paused" || stateRef.current === "game_over") {
+    if (screen?.phase === "paused" || screen?.phase === "game_over") {
       ctx.fillStyle = "#181c28";
       ctx.fillRect(8, 8, COLS * CELL - 16, CH - 16);
       ctx.strokeStyle = "#405070";
       ctx.lineWidth = 2;
       ctx.strokeRect(8, 8, COLS * CELL - 16, CH - 16);
-      ctx.fillStyle = stateRef.current === "paused" ? "#f0e080" : "#f08080";
+      ctx.fillStyle = screen.phase === "paused" ? "#f0e080" : "#f08080";
       ctx.font = "700 18px Segoe UI";
       ctx.textAlign = "center";
       ctx.fillText(
-        stateRef.current === "paused"
-          ? "Jeda — tekan P"
-          : "Game Over — ENTER main lagi",
+        screen.phase === "paused" ? "Jeda" : "Game Over",
         (COLS * CELL) / 2,
         CH / 2
       );
       ctx.textAlign = "left";
     }
-  }, [drawCell, ghostPiece, level, lines, score]);
+  }, [drawCell]);
 
-  const redraw = useCallback(() => {
+  const redraw = useCallback((board: TetrisBoard, screen: TetrisPlayerScreen | null) => {
     const c = canvasRef.current;
     if (!c) return;
     const ctx = c.getContext("2d");
     if (!ctx) return;
-    paint(ctx);
+    paint(ctx, board, screen);
   }, [paint]);
-
-  const pushSnapshot = useCallback(
-    (force = false) => {
-      if (!tetrisState) return;
-      if (tetrisState.phase === "playing" && !canPlayThisRound) return;
-      const now = Date.now();
-      if (!force && now - lastSnapshotMsRef.current < 120) return;
-      lastSnapshotMsRef.current = now;
-      sendTetrisSnapshot({
-        phase: stateRef.current,
-        score,
-        lines,
-        level,
-        board: composeBoardSnapshot(boardRef.current, activeRef.current),
-        next: nextRef.current ?? null,
-      });
-    },
-    [canPlayThisRound, level, lines, score, sendTetrisSnapshot, tetrisState]
-  );
-
-  const softDropOne = useCallback(() => {
-    if (stateRef.current !== "playing") return;
-    const a = activeRef.current;
-    if (!a) return;
-    if (fits(a.kind, a.rot, a.r + 1, a.c)) {
-      a.r += 1;
-    } else {
-      lock();
-    }
-  }, [fits, lock]);
-
-  const tryMove = useCallback((dcol: number) => {
-    if (stateRef.current !== "playing") return;
-    const a = activeRef.current;
-    if (!a) return;
-    if (fits(a.kind, a.rot, a.r, a.c + dcol)) {
-      a.c += dcol;
-    }
-  }, [fits]);
-
-  const tryRotate = useCallback(() => {
-    if (stateRef.current !== "playing") return;
-    const a = activeRef.current;
-    if (!a) return;
-    const nr = (a.rot + 1) % 4;
-    for (const kick of [0, -1, 1, -2, 2]) {
-      if (fits(a.kind, nr, a.r, a.c + kick)) {
-        a.rot = nr;
-        a.c += kick;
-        return;
-      }
-    }
-  }, [fits]);
-
-  const hardDrop = useCallback(() => {
-    if (stateRef.current !== "playing") return;
-    const a = activeRef.current;
-    if (!a) return;
-    while (fits(a.kind, a.rot, a.r + 1, a.c)) {
-      a.r += 1;
-    }
-    setScore((s) => s + 2);
-    softDropOne();
-    if (activeRef.current) {
-      dropRef.current = Math.max(50, 800 - (level - 1) * 70);
-    }
-  }, [fits, level, softDropOne]);
 
   useKeyboardState({
     active: true,
     onKeyDown: (key, event) => {
       if (["w", "a", "s", "d", " "].includes(key)) {
         event.preventDefault();
-      }
-      if (key === "escape") {
-        if (stateRef.current === "playing") {
-          stateRef.current = "menu";
-          setGameState("menu");
-          pushSnapshot(true);
-        }
-        return;
-      }
-      if (key === "p") {
-        if (stateRef.current === "playing") {
-          stateRef.current = "paused";
-          setGameState("paused");
-        } else if (stateRef.current === "paused") {
-          stateRef.current = "playing";
-          setGameState("playing");
-        }
-        pushSnapshot(true);
-        return;
       }
       if (key === "enter") {
         if (tetrisState?.phase === "lobby" && myRoomState && !myRoomState.spectator) {
@@ -678,146 +222,28 @@ export function TetrisGame() {
         return;
       }
       if (!canPlayThisRound || tetrisState?.phase !== "playing") return;
-      if (stateRef.current === "paused") return;
-      if (stateRef.current !== "playing") return;
-
-      if (key === "a") tryMove(-1);
-      else if (key === "d") tryMove(1);
-      else if (key === "s") {
-        const a = activeRef.current;
-        if (a && fits(a.kind, a.rot, a.r + 1, a.c)) {
-          a.r += 1;
-          setScore((s) => s + 1);
-        }
-      } else if (key === "w") {
-        tryRotate();
-      } else if (key === "q") {
-        for (let i = 0; i < 3; i++) tryRotate();
-      } else if (key === " ") {
+      if (key === "a") sendTetrisInput("left");
+      else if (key === "d") sendTetrisInput("right");
+      else if (key === "s") sendTetrisInput("soft_drop");
+      else if (key === "w") sendTetrisInput("rotate_cw");
+      else if (key === "q") sendTetrisInput("rotate_ccw");
+      else if (key === "p") sendTetrisInput("toggle_pause");
+      else if (key === " ") {
         event.preventDefault();
-        hardDrop();
+        sendTetrisInput("hard_drop");
       }
-      redraw();
-      pushSnapshot();
     },
   });
-
-  const tickGame = useCallback(
-    (deltaMs: number, shouldRedraw: boolean) => {
-      const playing = stateRef.current === "playing";
-      if (playing) {
-        dropRef.current -= deltaMs;
-        const interval = Math.max(50, 800 - (level - 1) * 70);
-        while (dropRef.current <= 0 && stateRef.current === "playing") {
-          dropRef.current += interval;
-          softDropOne();
-        }
-      } else if (prevPlayingRef.current) {
-        dropRef.current = Math.max(50, 800 - (level - 1) * 70);
-      }
-      prevPlayingRef.current = playing;
-      if (shouldRedraw) redraw();
-      pushSnapshot();
-    },
-    [level, pushSnapshot, redraw, softDropOne]
-  );
-
-  useRafTicker({
-    running: true,
-    onFrame: (deltaMs) => {
-      if (typeof document !== "undefined" && document.hidden) return;
-      tickGame(deltaMs, true);
-    },
-    maxDeltaMs: 120000,
-  });
-
-  useEffect(() => {
-    const intervalId = window.setInterval(() => {
-      if (typeof document !== "undefined" && !document.hidden) {
-        hiddenTickLastMsRef.current = 0;
-        return;
-      }
-      const now = performance.now();
-      if (hiddenTickLastMsRef.current === 0) {
-        hiddenTickLastMsRef.current = now;
-        return;
-      }
-      const delta = Math.max(1, now - hiddenTickLastMsRef.current);
-      hiddenTickLastMsRef.current = now;
-      tickGame(delta, false);
-    }, 200);
-
-    const onVisibility = () => {
-      if (typeof document !== "undefined" && !document.hidden) {
-        hiddenTickLastMsRef.current = 0;
-      }
-    };
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => {
-      window.clearInterval(intervalId);
-      document.removeEventListener("visibilitychange", onVisibility);
-    };
-  }, [tickGame]);
 
   const statusText = useMemo(() => {
-    if (gameState === "menu") return "ENTER untuk mulai";
-    if (gameState === "paused") return "Jeda";
-    if (gameState === "game_over") return "Game over";
-    return "Main";
-  }, [gameState]);
+    if (tetrisState?.phase === "lobby") return "ENTER untuk ready";
+    if (myScreen?.phase === "game_over") return "Game over";
+    return myScreen?.phase ?? "menu";
+  }, [myScreen, tetrisState]);
 
   useEffect(() => {
-    redraw();
-    pushSnapshot(true);
-  }, [gameState, pushSnapshot, redraw]);
-
-  useEffect(() => {
-    if (!tetrisState) return;
-
-    if (
-      tetrisState.phase === "playing" &&
-      canPlayThisRound &&
-      startedRoundRef.current !== tetrisState.round
-    ) {
-      startedRoundRef.current = tetrisState.round;
-      boardRef.current = emptyBoard();
-      refill();
-      nextRef.current = drawPiece();
-      setScore(0);
-      setLines(0);
-      setLevel(1);
-      if (spawn()) {
-        stateRef.current = "playing";
-        queueGameState("playing");
-      } else {
-        stateRef.current = "game_over";
-        queueGameState("game_over");
-      }
-      dropRef.current = 800;
-      redraw();
-      pushSnapshot(true);
-      return;
-    }
-
-    if (tetrisState.phase === "playing" && !canPlayThisRound) {
-      stateRef.current = "menu";
-      queueGameState("menu");
-      boardRef.current = emptyBoard();
-      activeRef.current = null;
-      redraw();
-      return;
-    }
-
-    if (tetrisState.phase !== "playing") {
-      startedRoundRef.current = -1;
-      stateRef.current = "menu";
-      queueGameState("menu");
-      boardRef.current = emptyBoard();
-      activeRef.current = null;
-      redraw();
-      pushSnapshot(true);
-    }
-  }, [canPlayThisRound, drawPiece, pushSnapshot, queueGameState, redraw, refill, spawn, tetrisState]);
+    redraw(myBoard, myScreen);
+  }, [myBoard, myScreen, redraw]);
 
   useEffect(() => {
     if (!tetrisState) return;
@@ -878,7 +304,8 @@ export function TetrisGame() {
             />
             <div className="mt-4 flex flex-wrap items-center gap-3">
               <p className="text-sm text-[#8f96ac]">
-                {statusText} · Skor {score} · Baris {lines} · Level {level}
+                {statusText} · Skor {myScreen?.score ?? 0} · Baris {myScreen?.lines ?? 0} · Level{" "}
+                {myScreen?.level ?? 1}
               </p>
               {tetrisState?.phase === "lobby" && (
                 <p className="text-xs text-[#9aa7c4]">Menunggu ready: {waitingReadyCount}</p>

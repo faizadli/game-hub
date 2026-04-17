@@ -56,6 +56,14 @@ export type TetrisPlayerScreen = {
 };
 
 export type TetrisRoomPhase = "lobby" | "playing" | "finished";
+export type TetrisInputAction =
+  | "left"
+  | "right"
+  | "soft_drop"
+  | "rotate_cw"
+  | "rotate_ccw"
+  | "hard_drop"
+  | "toggle_pause";
 
 export type TetrisPlayerState = {
   id: string;

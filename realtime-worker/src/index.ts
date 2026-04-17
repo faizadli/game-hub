@@ -48,6 +48,23 @@ type TetrisSnapshot = {
   updatedAt: number;
 };
 
+type TetrisActivePiece = {
+  kind: string;
+  r: number;
+  c: number;
+  rot: number;
+};
+
+type TetrisRuntime = {
+  board: TetrisBoard;
+  active: TetrisActivePiece | null;
+  next: string;
+  bag: string[];
+  dropMs: number;
+  lines: number;
+  level: number;
+};
+
 type TetrisPlayer = {
   id: string;
   name: string;
@@ -65,15 +82,199 @@ type IncomingMessage =
   | { type: "ready"; value: boolean }
   | { type: "tetris_ready"; value: boolean }
   | { type: "direction"; dir: string }
-  | {
-      type: "tetris_snapshot";
-      phase: string;
-      score: number;
-      lines: number;
-      level: number;
-      board: unknown;
-      next: string | null;
-    };
+  | { type: "tetris_input"; action: string };
+
+const TETRIS_ROWS = 22;
+const TETRIS_COLS = 10;
+const TETRIS_ORDER = ["I", "O", "T", "S", "Z", "J", "L"] as const;
+const TETRIS_DROP_BASE_MS = 800;
+const TETRIS_DROP_MIN_MS = 50;
+const TETRIS_TICK_MS = 100;
+
+const TETRIS_SHAPES: Record<string, [number, number][][]> = {
+  I: [
+    [
+      [0, 1],
+      [1, 1],
+      [2, 1],
+      [3, 1],
+    ],
+    [
+      [2, 0],
+      [2, 1],
+      [2, 2],
+      [2, 3],
+    ],
+    [
+      [0, 2],
+      [1, 2],
+      [2, 2],
+      [3, 2],
+    ],
+    [
+      [1, 0],
+      [1, 1],
+      [1, 2],
+      [1, 3],
+    ],
+  ],
+  O: [
+    [
+      [0, 0],
+      [1, 0],
+      [0, 1],
+      [1, 1],
+    ],
+    [
+      [0, 0],
+      [1, 0],
+      [0, 1],
+      [1, 1],
+    ],
+    [
+      [0, 0],
+      [1, 0],
+      [0, 1],
+      [1, 1],
+    ],
+    [
+      [0, 0],
+      [1, 0],
+      [0, 1],
+      [1, 1],
+    ],
+  ],
+  T: [
+    [
+      [1, 0],
+      [0, 1],
+      [1, 1],
+      [2, 1],
+    ],
+    [
+      [1, 0],
+      [1, 1],
+      [2, 1],
+      [1, 2],
+    ],
+    [
+      [0, 1],
+      [1, 1],
+      [2, 1],
+      [1, 2],
+    ],
+    [
+      [1, 0],
+      [0, 1],
+      [1, 1],
+      [1, 2],
+    ],
+  ],
+  S: [
+    [
+      [1, 0],
+      [2, 0],
+      [0, 1],
+      [1, 1],
+    ],
+    [
+      [1, 0],
+      [1, 1],
+      [2, 1],
+      [2, 2],
+    ],
+    [
+      [1, 1],
+      [2, 1],
+      [0, 2],
+      [1, 2],
+    ],
+    [
+      [0, 0],
+      [0, 1],
+      [1, 1],
+      [1, 2],
+    ],
+  ],
+  Z: [
+    [
+      [0, 0],
+      [1, 0],
+      [1, 1],
+      [2, 1],
+    ],
+    [
+      [2, 0],
+      [1, 1],
+      [2, 1],
+      [1, 2],
+    ],
+    [
+      [0, 1],
+      [1, 1],
+      [1, 2],
+      [2, 2],
+    ],
+    [
+      [1, 0],
+      [0, 1],
+      [1, 1],
+      [0, 2],
+    ],
+  ],
+  J: [
+    [
+      [0, 0],
+      [0, 1],
+      [1, 1],
+      [2, 1],
+    ],
+    [
+      [1, 0],
+      [2, 0],
+      [1, 1],
+      [1, 2],
+    ],
+    [
+      [0, 1],
+      [1, 1],
+      [2, 1],
+      [2, 2],
+    ],
+    [
+      [1, 0],
+      [1, 1],
+      [0, 2],
+      [1, 2],
+    ],
+  ],
+  L: [
+    [
+      [2, 0],
+      [0, 1],
+      [1, 1],
+      [2, 1],
+    ],
+    [
+      [1, 0],
+      [1, 1],
+      [1, 2],
+      [2, 2],
+    ],
+    [
+      [0, 1],
+      [1, 1],
+      [2, 1],
+      [0, 2],
+    ],
+    [
+      [0, 0],
+      [1, 0],
+      [1, 1],
+      [1, 2],
+    ],
+  ],
+};
 
 export interface Env {
   LOBBY_ROOM: DurableObjectNamespace<LobbyRoom>;
@@ -109,7 +310,9 @@ export class LobbyRoom extends DurableObject {
   private sessionToClientId = new Map<string, string>();
   private tetrisPlayers = new Map<string, TetrisPlayer>();
   private tetrisScreens = new Map<string, TetrisSnapshot>();
+  private tetrisRuntime = new Map<string, TetrisRuntime>();
   private tetrisDisconnectTimers = new Map<string, number>();
+  private tetrisTickTimer: number | null = null;
   private tetrisPhase: TetrisRoomPhase = "lobby";
   private tetrisRound = 0;
   private tetrisWinnerId: string | null = null;
@@ -224,21 +427,8 @@ export class LobbyRoom extends DurableObject {
       return;
     }
 
-    if (
-      data.type === "tetris_snapshot" &&
-      typeof data.phase === "string" &&
-      typeof data.score === "number" &&
-      typeof data.lines === "number" &&
-      typeof data.level === "number"
-    ) {
-      this.setTetrisSnapshot(c.id, {
-        phase: data.phase,
-        score: data.score,
-        lines: data.lines,
-        level: data.level,
-        board: data.board,
-        next: typeof data.next === "string" ? data.next : null,
-      });
+    if (data.type === "tetris_input" && typeof data.action === "string") {
+      this.setTetrisInput(c.id, data.action);
       return;
     }
   }
@@ -269,9 +459,11 @@ export class LobbyRoom extends DurableObject {
       } else {
         this.tetrisPlayers.delete(c.id);
         this.tetrisScreens.delete(c.id);
+        this.tetrisRuntime.delete(c.id);
       }
     } else {
       this.tetrisScreens.delete(c.id);
+      this.tetrisRuntime.delete(c.id);
     }
     this.syncAfterLeave();
     this.syncTetrisAfterLeave();
@@ -358,6 +550,212 @@ export class LobbyRoom extends DurableObject {
     });
   }
 
+  private emptyTetrisBoard(): TetrisBoard {
+    return Array.from({ length: TETRIS_ROWS }, () => Array<TetrisCell>(TETRIS_COLS).fill(null));
+  }
+
+  private drawTetrisKind(runtime: TetrisRuntime): string {
+    if (!runtime.bag.length) {
+      runtime.bag = [...TETRIS_ORDER].sort(() => Math.random() - 0.5);
+    }
+    return runtime.bag.pop() ?? "T";
+  }
+
+  private tetrisDropInterval(level: number) {
+    return Math.max(TETRIS_DROP_MIN_MS, TETRIS_DROP_BASE_MS - (level - 1) * 70);
+  }
+
+  private tetrisFits(board: TetrisBoard, kind: string, rot: number, r: number, c: number) {
+    const cells = TETRIS_SHAPES[kind][rot % TETRIS_SHAPES[kind].length];
+    for (const [dr, dc] of cells) {
+      const rr = r + dr;
+      const cc = c + dc;
+      if (cc < 0 || cc >= TETRIS_COLS || rr >= TETRIS_ROWS) return false;
+      if (rr >= 0 && board[rr][cc]) return false;
+    }
+    return true;
+  }
+
+  private buildTetrisBoardSnapshot(runtime: TetrisRuntime): TetrisBoard {
+    const snapshot = runtime.board.map((row) => row.slice());
+    const a = runtime.active;
+    if (!a) return snapshot;
+    const cells = TETRIS_SHAPES[a.kind][a.rot % TETRIS_SHAPES[a.kind].length];
+    for (const [dr, dc] of cells) {
+      const rr = a.r + dr;
+      const cc = a.c + dc;
+      if (rr >= 0 && rr < TETRIS_ROWS && cc >= 0 && cc < TETRIS_COLS) {
+        snapshot[rr][cc] = a.kind;
+      }
+    }
+    return snapshot;
+  }
+
+  private refreshTetrisScreen(id: string) {
+    const player = this.tetrisPlayers.get(id);
+    const runtime = this.tetrisRuntime.get(id);
+    if (!player || !runtime) return;
+    this.tetrisScreens.set(id, {
+      id,
+      name: player.name,
+      phase: player.done ? "game_over" : player.active ? "playing" : "menu",
+      score: player.score,
+      lines: runtime.lines,
+      level: runtime.level,
+      board: this.buildTetrisBoardSnapshot(runtime),
+      next: runtime.next,
+      updatedAt: Date.now(),
+    });
+  }
+
+  private spawnTetris(runtime: TetrisRuntime) {
+    const kind = runtime.next;
+    runtime.next = this.drawTetrisKind(runtime);
+    for (const sr of [0, -1, 1, -2]) {
+      if (this.tetrisFits(runtime.board, kind, 0, sr, 3)) {
+        runtime.active = { kind, r: sr, c: 3, rot: 0 };
+        return true;
+      }
+    }
+    runtime.active = null;
+    return false;
+  }
+
+  private lockTetrisPiece(id: string) {
+    const player = this.tetrisPlayers.get(id);
+    const runtime = this.tetrisRuntime.get(id);
+    if (!player || !runtime || !runtime.active) return;
+    const a = runtime.active;
+    const cells = TETRIS_SHAPES[a.kind][a.rot % TETRIS_SHAPES[a.kind].length];
+    for (const [dr, dc] of cells) {
+      const rr = a.r + dr;
+      const cc = a.c + dc;
+      if (rr < 0) {
+        player.done = true;
+        player.active = false;
+        runtime.active = null;
+        return;
+      }
+      if (rr >= 0 && rr < TETRIS_ROWS) runtime.board[rr][cc] = a.kind;
+    }
+
+    let cleared = 0;
+    let y = TETRIS_ROWS - 1;
+    while (y >= 0) {
+      if (runtime.board[y].every((cell) => cell !== null)) {
+        cleared += 1;
+        runtime.board.splice(y, 1);
+        runtime.board.unshift(Array<TetrisCell>(TETRIS_COLS).fill(null));
+      } else {
+        y -= 1;
+      }
+    }
+
+    if (cleared > 0) {
+      const add = [0, 100, 300, 500, 800][cleared] ?? 0;
+      player.score += add * runtime.level;
+      runtime.lines += cleared;
+      runtime.level = 1 + Math.floor(runtime.lines / 10);
+    }
+
+    runtime.active = null;
+    if (!this.spawnTetris(runtime)) {
+      player.done = true;
+      player.active = false;
+    }
+  }
+
+  private stepTetris(id: string) {
+    const player = this.tetrisPlayers.get(id);
+    const runtime = this.tetrisRuntime.get(id);
+    if (!player || !runtime || !player.active || player.done || !runtime.active) return;
+    const a = runtime.active;
+    if (this.tetrisFits(runtime.board, a.kind, a.rot, a.r + 1, a.c)) {
+      a.r += 1;
+    } else {
+      this.lockTetrisPiece(id);
+    }
+  }
+
+  private setTetrisInput(id: string, action: string) {
+    if (this.tetrisPhase !== "playing") return;
+    const player = this.tetrisPlayers.get(id);
+    const runtime = this.tetrisRuntime.get(id);
+    if (!player || !runtime || !player.active || player.done || !runtime.active) return;
+
+    const a = runtime.active;
+    if (!a) return;
+
+    if (action === "left") {
+      if (this.tetrisFits(runtime.board, a.kind, a.rot, a.r, a.c - 1)) a.c -= 1;
+    } else if (action === "right") {
+      if (this.tetrisFits(runtime.board, a.kind, a.rot, a.r, a.c + 1)) a.c += 1;
+    } else if (action === "soft_drop") {
+      if (this.tetrisFits(runtime.board, a.kind, a.rot, a.r + 1, a.c)) {
+        a.r += 1;
+        player.score += 1;
+      } else {
+        this.lockTetrisPiece(id);
+      }
+    } else if (action === "rotate_cw" || action === "rotate_ccw") {
+      const dir = action === "rotate_cw" ? 1 : -1;
+      const nextRot = (a.rot + dir + 4) % 4;
+      for (const kick of [0, -1, 1, -2, 2]) {
+        if (this.tetrisFits(runtime.board, a.kind, nextRot, a.r, a.c + kick)) {
+          a.rot = nextRot;
+          a.c += kick;
+          break;
+        }
+      }
+    } else if (action === "hard_drop") {
+      while (runtime.active && this.tetrisFits(runtime.board, a.kind, a.rot, a.r + 1, a.c)) {
+        a.r += 1;
+      }
+      player.score += 2;
+      this.lockTetrisPiece(id);
+    } else if (action === "toggle_pause") {
+      // reserved: no-op for authoritative round mode
+    }
+
+    this.refreshTetrisScreen(id);
+    this.broadcastTetrisState();
+    this.tryFinishTetrisRound();
+  }
+
+  private startTetrisTick() {
+    if (this.tetrisTickTimer !== null) return;
+    this.tetrisTickTimer = setInterval(() => this.tickTetrisRound(), TETRIS_TICK_MS) as unknown as number;
+  }
+
+  private stopTetrisTick() {
+    if (this.tetrisTickTimer !== null) {
+      clearInterval(this.tetrisTickTimer);
+      this.tetrisTickTimer = null;
+    }
+  }
+
+  private tickTetrisRound() {
+    if (this.tetrisPhase !== "playing") return;
+    let changed = false;
+    for (const [id, player] of this.tetrisPlayers) {
+      if (!player.active || player.done) continue;
+      const runtime = this.tetrisRuntime.get(id);
+      if (!runtime) continue;
+      runtime.dropMs -= TETRIS_TICK_MS;
+      const interval = this.tetrisDropInterval(runtime.level);
+      while (runtime.dropMs <= 0 && player.active && !player.done) {
+        runtime.dropMs += interval;
+        this.stepTetris(id);
+        changed = true;
+      }
+      this.refreshTetrisScreen(id);
+    }
+    if (changed) {
+      this.broadcastTetrisState();
+      this.tryFinishTetrisRound();
+    }
+  }
+
   private clearTetrisDisconnectTimer(id: string) {
     const timer = this.tetrisDisconnectTimers.get(id);
     if (timer !== undefined) {
@@ -391,6 +789,7 @@ export class LobbyRoom extends DurableObject {
     this.players.delete(current.id);
     this.tetrisPlayers.delete(current.id);
     this.tetrisScreens.delete(current.id);
+    this.tetrisRuntime.delete(current.id);
 
     current.id = existingId;
     current.session = session;
@@ -403,37 +802,12 @@ export class LobbyRoom extends DurableObject {
     }
   }
 
-  private sanitizeTetrisPhase(input: string): TetrisPhase {
-    if (input === "playing") return "playing";
-    if (input === "paused") return "paused";
-    if (input === "game_over") return "game_over";
-    return "menu";
-  }
-
-  private sanitizeTetrisBoard(input: unknown): TetrisBoard {
-    if (!Array.isArray(input)) {
-      return Array.from({ length: 22 }, () => Array<TetrisCell>(10).fill(null));
-    }
-    const rows = 22;
-    const cols = 10;
-    const safe: TetrisBoard = [];
-    for (let r = 0; r < rows; r++) {
-      const srcRow = Array.isArray(input[r]) ? input[r] : [];
-      const row: TetrisCell[] = [];
-      for (let c = 0; c < cols; c++) {
-        const raw = srcRow[c];
-        row.push(typeof raw === "string" ? raw.slice(0, 1) : null);
-      }
-      safe.push(row);
-    }
-    return safe;
-  }
-
   private syncTetrisPresence(id: string) {
     const inTetris = this.tetrisPageUserIds().has(id);
     if (!inTetris) {
       this.tetrisPlayers.delete(id);
       this.tetrisScreens.delete(id);
+      this.tetrisRuntime.delete(id);
       return;
     }
 
@@ -461,11 +835,15 @@ export class LobbyRoom extends DurableObject {
         this.clearTetrisDisconnectTimer(id);
         this.tetrisPlayers.delete(id);
         this.tetrisScreens.delete(id);
+        this.tetrisRuntime.delete(id);
       }
     }
     for (const id of this.tetrisScreens.keys()) {
       const p = this.tetrisPlayers.get(id);
-      if (!tetrisUsers.has(id) && !p?.active) this.tetrisScreens.delete(id);
+      if (!tetrisUsers.has(id) && !p?.active) {
+        this.tetrisScreens.delete(id);
+        this.tetrisRuntime.delete(id);
+      }
     }
     if (this.tetrisPhase === "playing") {
       this.tryFinishTetrisRound();
@@ -518,15 +896,32 @@ export class LobbyRoom extends DurableObject {
         p.spectator = false;
         p.active = true;
         p.score = 0;
+        const runtime: TetrisRuntime = {
+          board: this.emptyTetrisBoard(),
+          active: null,
+          bag: [],
+          next: "T",
+          dropMs: TETRIS_DROP_BASE_MS,
+          lines: 0,
+          level: 1,
+        };
+        runtime.next = this.drawTetrisKind(runtime);
+        this.spawnTetris(runtime);
+        this.tetrisRuntime.set(p.id, runtime);
+        this.refreshTetrisScreen(p.id);
       } else if (tetrisUsers.has(p.id)) {
         p.spectator = true;
         p.active = false;
+        this.tetrisRuntime.delete(p.id);
+        this.tetrisScreens.delete(p.id);
       } else {
         p.active = false;
+        this.tetrisRuntime.delete(p.id);
+        this.tetrisScreens.delete(p.id);
       }
     }
 
-    this.tetrisScreens.clear();
+    this.startTetrisTick();
     this.broadcastTetrisState();
   }
 
@@ -545,6 +940,7 @@ export class LobbyRoom extends DurableObject {
 
   private finishTetrisRound(winnerId: string | null) {
     if (this.tetrisPhase !== "playing") return;
+    this.stopTetrisTick();
     for (const id of this.tetrisDisconnectTimers.keys()) {
       this.clearTetrisDisconnectTimer(id);
     }
@@ -562,53 +958,13 @@ export class LobbyRoom extends DurableObject {
         if (tetrisUsers.has(p.id)) {
           p.spectator = false;
         }
+        this.tetrisRuntime.delete(p.id);
+        this.tetrisScreens.delete(p.id);
       }
       this.tetrisPhase = "lobby";
       this.tetrisWinnerId = null;
       this.broadcastTetrisState();
     }, 2200) as unknown as number;
-  }
-
-  private setTetrisSnapshot(
-    id: string,
-    payload: {
-      phase: string;
-      score: number;
-      lines: number;
-      level: number;
-      board: unknown;
-      next: string | null;
-    }
-  ) {
-    const inTetris = this.tetrisPageUserIds().has(id);
-    if (!inTetris) return;
-    const c = [...this.clients.values()].find((x) => x.id === id);
-    if (!c) return;
-    this.ensureTetrisPlayer(id, c.name);
-    const tp = this.tetrisPlayers.get(id);
-    if (!tp) return;
-    tp.name = c.name;
-    tp.connected = true;
-    this.clearTetrisDisconnectTimer(id);
-    if (this.tetrisPhase === "playing" && (!tp.active || tp.spectator)) return;
-
-    this.tetrisScreens.set(id, {
-      id,
-      name: c.name,
-      phase: this.sanitizeTetrisPhase(payload.phase),
-      score: Math.max(0, Math.floor(payload.score)),
-      lines: Math.max(0, Math.floor(payload.lines)),
-      level: Math.max(1, Math.floor(payload.level)),
-      board: this.sanitizeTetrisBoard(payload.board),
-      next: payload.next ? payload.next.slice(0, 1) : null,
-      updatedAt: Date.now(),
-    });
-
-    tp.score = Math.max(0, Math.floor(payload.score));
-    tp.done = this.sanitizeTetrisPhase(payload.phase) === "game_over";
-
-    this.broadcastTetrisState();
-    this.tryFinishTetrisRound();
   }
 
   private syncPlayerPresence(id: string) {
@@ -944,8 +1300,8 @@ export class LobbyRoom extends DurableObject {
       phase: this.tetrisPhase,
       round: this.tetrisRound,
       winnerId: this.tetrisWinnerId,
-      rows: 22,
-      cols: 10,
+      rows: TETRIS_ROWS,
+      cols: TETRIS_COLS,
       roster,
       players,
     });

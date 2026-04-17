@@ -15,8 +15,7 @@ import type {
   GameSlug,
   PresenceUser,
   SnakeRealtimeState,
-  TetrisBoard,
-  TetrisPhase,
+  TetrisInputAction,
   TetrisRealtimeState,
 } from "@/lib/realtime/types";
 
@@ -32,14 +31,7 @@ type RealtimeContextValue = {
   sendTetrisReady: (value: boolean) => void;
   sendSnakeReady: (value: boolean) => void;
   sendSnakeDirection: (dir: "up" | "down" | "left" | "right") => void;
-  sendTetrisSnapshot: (payload: {
-    phase: TetrisPhase;
-    score: number;
-    lines: number;
-    level: number;
-    board: TetrisBoard;
-    next: string | null;
-  }) => void;
+  sendTetrisInput: (action: TetrisInputAction) => void;
 };
 
 const defaultCounts: GameCounts = {
@@ -215,26 +207,11 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
-  const sendTetrisSnapshot = useCallback(
-    (payload: {
-      phase: TetrisPhase;
-      score: number;
-      lines: number;
-      level: number;
-      board: TetrisBoard;
-      next: string | null;
-    }) => {
-      const ws = socketRef.current;
-      if (!ws || ws.readyState !== WebSocket.OPEN) return;
-      ws.send(
-        JSON.stringify({
-          type: "tetris_snapshot",
-          ...payload,
-        })
-      );
-    },
-    []
-  );
+  const sendTetrisInput = useCallback((action: TetrisInputAction) => {
+    const ws = socketRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify({ type: "tetris_input", action }));
+  }, []);
 
   const value = useMemo<RealtimeContextValue>(
     () => ({
@@ -249,7 +226,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       sendTetrisReady,
       sendSnakeReady,
       sendSnakeDirection,
-      sendTetrisSnapshot,
+      sendTetrisInput,
     }),
     [
       connected,
@@ -263,7 +240,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       sendTetrisReady,
       sendSnakeReady,
       sendSnakeDirection,
-      sendTetrisSnapshot,
+      sendTetrisInput,
     ]
   );
 
