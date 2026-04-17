@@ -1,36 +1,104 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Games Web (Next.js + Realtime Multiplayer)
 
-## Getting Started
+Project ini berisi:
 
-First, run the development server:
+- Game Hub + game browser (`snake`, `tetris`, `typing`, `minecraft`)
+- Realtime multiplayer untuk **Snake** menggunakan **Cloudflare Durable Objects**
+- Tanpa akun/register dan tanpa database tradisional
+
+## Struktur penting
+
+- Frontend Next.js: root project ini
+- Worker realtime: `realtime-worker/`
+
+## 1) Jalankan lokal (frontend + realtime)
+
+### A. Jalankan frontend
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Frontend: `http://localhost:3000`
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### B. Jalankan realtime worker (terminal kedua)
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Syarat: install Wrangler.
 
-## Learn More
+```bash
+npm i -g wrangler
+```
 
-To learn more about Next.js, take a look at the following resources:
+Lalu dari folder worker:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+cd realtime-worker
+wrangler dev
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Worker lokal default: `http://127.0.0.1:8787`
 
-## Deploy on Vercel
+Frontend sudah otomatis mencoba websocket ke `ws://127.0.0.1:8787/ws` saat di localhost.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## 2) Environment variable frontend
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Di production, set:
+
+```bash
+NEXT_PUBLIC_REALTIME_WS_URL=wss://<worker-url>
+```
+
+Contoh ada di `.env.example`.
+
+## 3) Deploy gratis (rekomendasi)
+
+### A. Deploy realtime ke Cloudflare Workers
+
+1. Login wrangler:
+
+```bash
+wrangler login
+```
+
+2. Dari folder `realtime-worker/`, deploy:
+
+```bash
+wrangler deploy
+```
+
+3. Ambil URL worker hasil deploy, contoh:
+`https://games-web-realtime.<subdomain>.workers.dev`
+
+Websocket endpoint-nya:
+`wss://games-web-realtime.<subdomain>.workers.dev/ws`
+
+### B. Deploy frontend ke Vercel
+
+1. Push repo ke GitHub/GitLab.
+2. Import project ke Vercel.
+3. Set Environment Variable di Vercel:
+
+```bash
+NEXT_PUBLIC_REALTIME_WS_URL=wss://games-web-realtime.<subdomain>.workers.dev
+```
+
+4. Deploy.
+
+## 4) Cara kerja fitur multiplayer Snake
+
+- User masuk website -> isi nama -> nama dipakai sebagai identitas sesi.
+- Hub menampilkan:
+  - siapa saja online
+  - jumlah user per game card
+- Snake room:
+  - semua pemain harus klik **Ready**
+  - game mulai kalau semua ready (minimal 2 pemain)
+  - user yang join saat game berjalan jadi **spectator**
+  - setelah round selesai, spectator bisa ikut round berikutnya
+
+## 5) Catatan teknis
+
+- State multiplayer disimpan in-memory di Durable Object room `global`.
+- Tidak ada penyimpanan akun atau data user permanen.
+- Jika worker restart, state room akan reset (sesuai desain tanpa database).
