@@ -29,6 +29,7 @@ type RealtimeContextValue = {
   counts: GameCounts;
   snakeState: SnakeRealtimeState | null;
   tetrisState: TetrisRealtimeState | null;
+  sendTetrisReady: (value: boolean) => void;
   sendSnakeReady: (value: boolean) => void;
   sendSnakeDirection: (dir: "up" | "down" | "left" | "right") => void;
   sendTetrisSnapshot: (payload: {
@@ -179,6 +180,12 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     ws.send(JSON.stringify({ type: "ready", value }));
   }, []);
 
+  const sendTetrisReady = useCallback((value: boolean) => {
+    const ws = socketRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify({ type: "tetris_ready", value }));
+  }, []);
+
   const sendSnakeDirection = useCallback(
     (dir: "up" | "down" | "left" | "right") => {
       const ws = socketRef.current;
@@ -219,6 +226,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       counts,
       snakeState,
       tetrisState,
+      sendTetrisReady,
       sendSnakeReady,
       sendSnakeDirection,
       sendTetrisSnapshot,
@@ -232,6 +240,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       counts,
       snakeState,
       tetrisState,
+      sendTetrisReady,
       sendSnakeReady,
       sendSnakeDirection,
       sendTetrisSnapshot,

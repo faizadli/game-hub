@@ -31,6 +31,7 @@ type SnakeStart = {
 };
 
 type TetrisPhase = "menu" | "playing" | "paused" | "game_over";
+type TetrisRoomPhase = "lobby" | "playing" | "finished";
 type TetrisCell = string | null;
 type TetrisBoard = TetrisCell[][];
 
@@ -46,10 +47,21 @@ type TetrisSnapshot = {
   updatedAt: number;
 };
 
+type TetrisPlayer = {
+  id: string;
+  name: string;
+  ready: boolean;
+  spectator: boolean;
+  active: boolean;
+  done: boolean;
+  score: number;
+};
+
 type IncomingMessage =
   | { type: "hello"; name: string }
   | { type: "page"; page: string }
   | { type: "ready"; value: boolean }
+  | { type: "tetris_ready"; value: boolean }
   | { type: "direction"; dir: string }
   | {
       type: "tetris_snapshot";
@@ -92,7 +104,12 @@ export default worker;
 export class LobbyRoom extends DurableObject {
   private clients = new Map<WebSocket, ClientState>();
   private players = new Map<string, SnakePlayer>();
+  private tetrisPlayers = new Map<string, TetrisPlayer>();
   private tetrisScreens = new Map<string, TetrisSnapshot>();
+  private tetrisPhase: TetrisRoomPhase = "lobby";
+  private tetrisRound = 0;
+  private tetrisWinnerId: string | null = null;
+  private tetrisFinishTimeout: number | null = null;
   private phase: SnakePhase = "lobby";
   private round = 0;
   private winnerId: string | null = null;
@@ -155,6 +172,8 @@ export class LobbyRoom extends DurableObject {
       c.name = name;
       const p = this.players.get(c.id);
       if (p) p.name = name;
+      const tp = this.tetrisPlayers.get(c.id);
+      if (tp) tp.name = name;
       const screen = this.tetrisScreens.get(c.id);
       if (screen) screen.name = name;
       this.send(ws, { type: "name_ack", name, adjusted: name !== requestedName });
@@ -178,6 +197,11 @@ export class LobbyRoom extends DurableObject {
 
     if (data.type === "ready" && typeof data.value === "boolean") {
       this.setReady(c.id, data.value);
+      return;
+    }
+
+    if (data.type === "tetris_ready" && typeof data.value === "boolean") {
+      this.setTetrisReady(c.id, data.value);
       return;
     }
 
@@ -210,6 +234,7 @@ export class LobbyRoom extends DurableObject {
     if (!c) return;
     this.clients.delete(ws);
     this.players.delete(c.id);
+    this.tetrisPlayers.delete(c.id);
     this.tetrisScreens.delete(c.id);
     this.syncAfterLeave();
     this.syncTetrisAfterLeave();
@@ -284,6 +309,19 @@ export class LobbyRoom extends DurableObject {
     return ids;
   }
 
+  private ensureTetrisPlayer(id: string, name: string) {
+    if (this.tetrisPlayers.has(id)) return;
+    this.tetrisPlayers.set(id, {
+      id,
+      name,
+      ready: false,
+      spectator: false,
+      active: false,
+      done: false,
+      score: 0,
+    });
+  }
+
   private sanitizeTetrisPhase(input: string): TetrisPhase {
     if (input === "playing") return "playing";
     if (input === "paused") return "paused";
@@ -313,15 +351,128 @@ export class LobbyRoom extends DurableObject {
   private syncTetrisPresence(id: string) {
     const inTetris = this.tetrisPageUserIds().has(id);
     if (!inTetris) {
+      this.tetrisPlayers.delete(id);
       this.tetrisScreens.delete(id);
+      return;
+    }
+
+    const c = [...this.clients.values()].find((x) => x.id === id);
+    if (!c) return;
+    this.ensureTetrisPlayer(id, c.name);
+    const tp = this.tetrisPlayers.get(id);
+    if (!tp) return;
+    tp.name = c.name;
+
+    if (this.tetrisPhase === "playing" && !tp.active) {
+      tp.spectator = true;
     }
   }
 
   private syncTetrisAfterLeave() {
     const tetrisUsers = this.tetrisPageUserIds();
+    for (const id of this.tetrisPlayers.keys()) {
+      if (!tetrisUsers.has(id)) this.tetrisPlayers.delete(id);
+    }
     for (const id of this.tetrisScreens.keys()) {
       if (!tetrisUsers.has(id)) this.tetrisScreens.delete(id);
     }
+    if (this.tetrisPhase === "playing") {
+      this.tryFinishTetrisRound();
+    }
+  }
+
+  private setTetrisReady(id: string, value: boolean) {
+    const inTetris = this.tetrisPageUserIds().has(id);
+    if (!inTetris) return;
+    const c = [...this.clients.values()].find((x) => x.id === id);
+    if (!c) return;
+    this.ensureTetrisPlayer(id, c.name);
+    const tp = this.tetrisPlayers.get(id);
+    if (!tp) return;
+    if (this.tetrisPhase === "playing") return;
+    if (tp.spectator) return;
+    tp.ready = value;
+    this.broadcastTetrisState();
+    this.tryStartTetrisRound();
+  }
+
+  private tryStartTetrisRound() {
+    if (this.tetrisPhase === "playing") return;
+    const tetrisUsers = this.tetrisPageUserIds();
+    const candidates = [...this.tetrisPlayers.values()].filter(
+      (p) => tetrisUsers.has(p.id) && !p.spectator
+    );
+    if (candidates.length < 1) return;
+    if (!candidates.every((p) => p.ready)) return;
+    this.startTetrisRound(candidates);
+  }
+
+  private startTetrisRound(active: TetrisPlayer[]) {
+    this.tetrisPhase = "playing";
+    this.tetrisRound += 1;
+    this.tetrisWinnerId = null;
+    if (this.tetrisFinishTimeout !== null) {
+      clearTimeout(this.tetrisFinishTimeout);
+      this.tetrisFinishTimeout = null;
+    }
+
+    const tetrisUsers = this.tetrisPageUserIds();
+    for (const p of this.tetrisPlayers.values()) {
+      p.ready = false;
+      p.done = false;
+      if (tetrisUsers.has(p.id) && active.some((a) => a.id === p.id)) {
+        p.spectator = false;
+        p.active = true;
+        p.score = 0;
+      } else if (tetrisUsers.has(p.id)) {
+        p.spectator = true;
+        p.active = false;
+      } else {
+        p.active = false;
+      }
+    }
+
+    this.tetrisScreens.clear();
+    this.broadcastTetrisState();
+  }
+
+  private tryFinishTetrisRound() {
+    if (this.tetrisPhase !== "playing") return;
+    const tetrisUsers = this.tetrisPageUserIds();
+    const active = [...this.tetrisPlayers.values()].filter(
+      (p) => tetrisUsers.has(p.id) && p.active
+    );
+    if (active.length === 0) {
+      this.finishTetrisRound(null);
+      return;
+    }
+    const survivors = active.filter((p) => !p.done);
+    if (survivors.length <= 1) {
+      this.finishTetrisRound(survivors[0]?.id ?? null);
+    }
+  }
+
+  private finishTetrisRound(winnerId: string | null) {
+    if (this.tetrisPhase !== "playing") return;
+    this.tetrisPhase = "finished";
+    this.tetrisWinnerId = winnerId;
+    this.broadcastTetrisState();
+
+    this.tetrisFinishTimeout = setTimeout(() => {
+      const tetrisUsers = this.tetrisPageUserIds();
+      for (const p of this.tetrisPlayers.values()) {
+        p.ready = false;
+        p.done = false;
+        p.active = false;
+        p.score = 0;
+        if (tetrisUsers.has(p.id)) {
+          p.spectator = false;
+        }
+      }
+      this.tetrisPhase = "lobby";
+      this.tetrisWinnerId = null;
+      this.broadcastTetrisState();
+    }, 2200) as unknown as number;
   }
 
   private setTetrisSnapshot(
@@ -339,6 +490,11 @@ export class LobbyRoom extends DurableObject {
     if (!inTetris) return;
     const c = [...this.clients.values()].find((x) => x.id === id);
     if (!c) return;
+    this.ensureTetrisPlayer(id, c.name);
+    const tp = this.tetrisPlayers.get(id);
+    if (!tp) return;
+    tp.name = c.name;
+    if (this.tetrisPhase === "playing" && (!tp.active || tp.spectator)) return;
 
     this.tetrisScreens.set(id, {
       id,
@@ -351,7 +507,12 @@ export class LobbyRoom extends DurableObject {
       next: payload.next ? payload.next.slice(0, 1) : null,
       updatedAt: Date.now(),
     });
+
+    tp.score = Math.max(0, Math.floor(payload.score));
+    tp.done = this.sanitizeTetrisPhase(payload.phase) === "game_over";
+
     this.broadcastTetrisState();
+    this.tryFinishTetrisRound();
   }
 
   private syncPlayerPresence(id: string) {
@@ -670,13 +831,28 @@ export class LobbyRoom extends DurableObject {
 
   private broadcastTetrisState() {
     const tetrisUsers = this.tetrisPageUserIds();
+    const roster = [...this.tetrisPlayers.values()]
+      .filter((p) => tetrisUsers.has(p.id))
+      .map((p) => ({
+        id: p.id,
+        name: p.name,
+        ready: p.ready,
+        spectator: p.spectator,
+        active: p.active,
+        done: p.done,
+        score: p.score,
+      }));
     const players = [...this.tetrisScreens.values()]
       .filter((screen) => tetrisUsers.has(screen.id))
-      .sort((a, b) => b.updatedAt - a.updatedAt);
+      .sort((a, b) => a.name.localeCompare(b.name));
     this.broadcast({
       type: "tetris_state",
+      phase: this.tetrisPhase,
+      round: this.tetrisRound,
+      winnerId: this.tetrisWinnerId,
       rows: 22,
       cols: 10,
+      roster,
       players,
     });
   }

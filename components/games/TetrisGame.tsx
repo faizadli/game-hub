@@ -269,7 +269,14 @@ function SpectatorBoard({ player }: { player: TetrisPlayerScreen }) {
 
 export function TetrisGame() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const { selfId, tetrisState, sendTetrisSnapshot, connected, users } = useRealtime();
+  const {
+    selfId,
+    tetrisState,
+    sendTetrisSnapshot,
+    sendTetrisReady,
+    connected,
+    users,
+  } = useRealtime();
   const boardRef = useRef<TetrisCell[][]>(emptyBoard());
   const activeRef = useRef<Active | null>(null);
   const nextRef = useRef<string>("T");
@@ -278,17 +285,52 @@ export function TetrisGame() {
   const stateRef = useRef<GameState>("menu");
   const prevPlayingRef = useRef(false);
   const lastSnapshotMsRef = useRef(0);
+  const startedRoundRef = useRef<number>(-1);
+  const hiddenTickLastMsRef = useRef<number>(0);
 
   const [score, setScore] = useState(0);
   const [lines, setLines] = useState(0);
   const [level, setLevel] = useState(1);
   const [gameState, setGameState] = useState<GameState>("menu");
+  const [showWinnerPopup, setShowWinnerPopup] = useState(false);
+  const [showLosePopup, setShowLosePopup] = useState(false);
+  const [watchAfterLose, setWatchAfterLose] = useState(false);
+  const [winnerPopupText, setWinnerPopupText] = useState("");
+  const queueGameState = useCallback((next: GameState) => {
+    queueMicrotask(() => setGameState(next));
+  }, []);
+  const queueWinnerPopup = useCallback((message: string) => {
+    queueMicrotask(() => {
+      setWinnerPopupText(message);
+      setShowWinnerPopup(true);
+    });
+  }, []);
+  const prevRoomPhaseRef = useRef<string>("");
+  const prevDoneRef = useRef(false);
+
+  const myRoomState = useMemo(
+    () => (tetrisState?.roster ?? []).find((p) => p.id === selfId) ?? null,
+    [selfId, tetrisState]
+  );
+  const canPlayThisRound = !!myRoomState?.active && !myRoomState?.spectator;
+  const isSpectatorMode = !!myRoomState?.spectator && tetrisState?.phase === "playing";
+  const lostWhileRoundPlaying =
+    tetrisState?.phase === "playing" && !!myRoomState?.active && !!myRoomState?.done;
+  const shouldShowSpectatorView = isSpectatorMode || (lostWhileRoundPlaying && watchAfterLose);
 
   const otherPlayingBoards = useMemo(() => {
     return (tetrisState?.players ?? []).filter(
       (p) => p.id !== selfId && (p.phase === "playing" || p.phase === "paused")
     );
   }, [tetrisState, selfId]);
+
+  const waitingReadyCount = useMemo(() => {
+    if (!tetrisState) return 0;
+    return (tetrisState.roster ?? []).filter((p) => !p.spectator && !p.ready).length;
+  }, [tetrisState]);
+  const roomRoster = useMemo(() => {
+    return [...(tetrisState?.roster ?? [])].sort((a, b) => a.name.localeCompare(b.name));
+  }, [tetrisState]);
 
   const onlineTetrisUsers = useMemo(
     () => users.filter((u) => u.game === "tetris").length,
@@ -539,6 +581,8 @@ export function TetrisGame() {
 
   const pushSnapshot = useCallback(
     (force = false) => {
+      if (!tetrisState) return;
+      if (tetrisState.phase === "playing" && !canPlayThisRound) return;
       const now = Date.now();
       if (!force && now - lastSnapshotMsRef.current < 120) return;
       lastSnapshotMsRef.current = now;
@@ -551,7 +595,7 @@ export function TetrisGame() {
         next: nextRef.current ?? null,
       });
     },
-    [level, lines, score, sendTetrisSnapshot]
+    [canPlayThisRound, level, lines, score, sendTetrisSnapshot, tetrisState]
   );
 
   const softDropOne = useCallback(() => {
@@ -602,25 +646,6 @@ export function TetrisGame() {
     }
   }, [fits, level, softDropOne]);
 
-  const newGame = useCallback(() => {
-    boardRef.current = emptyBoard();
-    refill();
-    nextRef.current = drawPiece();
-    setScore(0);
-    setLines(0);
-    setLevel(1);
-    if (spawn()) {
-      stateRef.current = "playing";
-      setGameState("playing");
-    } else {
-      stateRef.current = "game_over";
-      setGameState("game_over");
-    }
-    dropRef.current = 800;
-    redraw();
-    pushSnapshot(true);
-  }, [drawPiece, pushSnapshot, redraw, refill, spawn]);
-
   useKeyboardState({
     active: true,
     onKeyDown: (key, event) => {
@@ -647,11 +672,12 @@ export function TetrisGame() {
         return;
       }
       if (key === "enter") {
-        if (stateRef.current === "menu" || stateRef.current === "game_over") {
-          newGame();
+        if (tetrisState?.phase === "lobby" && myRoomState && !myRoomState.spectator) {
+          sendTetrisReady(!myRoomState.ready);
         }
         return;
       }
+      if (!canPlayThisRound || tetrisState?.phase !== "playing") return;
       if (stateRef.current === "paused") return;
       if (stateRef.current !== "playing") return;
 
@@ -676,24 +702,62 @@ export function TetrisGame() {
     },
   });
 
-  useRafTicker({
-    running: true,
-    onFrame: (deltaMs) => {
+  const tickGame = useCallback(
+    (deltaMs: number, shouldRedraw: boolean) => {
       const playing = stateRef.current === "playing";
       if (playing) {
         dropRef.current -= deltaMs;
-        if (dropRef.current <= 0) {
-          dropRef.current = Math.max(50, 800 - (level - 1) * 70);
+        const interval = Math.max(50, 800 - (level - 1) * 70);
+        while (dropRef.current <= 0 && stateRef.current === "playing") {
+          dropRef.current += interval;
           softDropOne();
         }
       } else if (prevPlayingRef.current) {
         dropRef.current = Math.max(50, 800 - (level - 1) * 70);
       }
       prevPlayingRef.current = playing;
-      redraw();
+      if (shouldRedraw) redraw();
       pushSnapshot();
     },
+    [level, pushSnapshot, redraw, softDropOne]
+  );
+
+  useRafTicker({
+    running: true,
+    onFrame: (deltaMs) => {
+      if (typeof document !== "undefined" && document.hidden) return;
+      tickGame(deltaMs, true);
+    },
+    maxDeltaMs: 120000,
   });
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      if (typeof document !== "undefined" && !document.hidden) {
+        hiddenTickLastMsRef.current = 0;
+        return;
+      }
+      const now = performance.now();
+      if (hiddenTickLastMsRef.current === 0) {
+        hiddenTickLastMsRef.current = now;
+        return;
+      }
+      const delta = Math.max(1, now - hiddenTickLastMsRef.current);
+      hiddenTickLastMsRef.current = now;
+      tickGame(delta, false);
+    }, 200);
+
+    const onVisibility = () => {
+      if (typeof document !== "undefined" && !document.hidden) {
+        hiddenTickLastMsRef.current = 0;
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [tickGame]);
 
   const statusText = useMemo(() => {
     if (gameState === "menu") return "ENTER untuk mulai";
@@ -707,61 +771,220 @@ export function TetrisGame() {
     pushSnapshot(true);
   }, [gameState, pushSnapshot, redraw]);
 
+  useEffect(() => {
+    if (!tetrisState) return;
+
+    if (
+      tetrisState.phase === "playing" &&
+      canPlayThisRound &&
+      startedRoundRef.current !== tetrisState.round
+    ) {
+      startedRoundRef.current = tetrisState.round;
+      boardRef.current = emptyBoard();
+      refill();
+      nextRef.current = drawPiece();
+      setScore(0);
+      setLines(0);
+      setLevel(1);
+      if (spawn()) {
+        stateRef.current = "playing";
+        queueGameState("playing");
+      } else {
+        stateRef.current = "game_over";
+        queueGameState("game_over");
+      }
+      dropRef.current = 800;
+      redraw();
+      pushSnapshot(true);
+      return;
+    }
+
+    if (tetrisState.phase === "playing" && !canPlayThisRound) {
+      stateRef.current = "menu";
+      queueGameState("menu");
+      boardRef.current = emptyBoard();
+      activeRef.current = null;
+      redraw();
+      return;
+    }
+
+    if (tetrisState.phase !== "playing") {
+      startedRoundRef.current = -1;
+      stateRef.current = "menu";
+      queueGameState("menu");
+      boardRef.current = emptyBoard();
+      activeRef.current = null;
+      redraw();
+      pushSnapshot(true);
+    }
+  }, [canPlayThisRound, drawPiece, pushSnapshot, queueGameState, redraw, refill, spawn, tetrisState]);
+
+  useEffect(() => {
+    if (!tetrisState) return;
+    if (lostWhileRoundPlaying && !prevDoneRef.current) {
+      queueMicrotask(() => setShowLosePopup(true));
+    }
+    if (
+      tetrisState.phase === "finished" &&
+      prevRoomPhaseRef.current !== "finished" &&
+      tetrisState.winnerId === selfId
+    ) {
+      queueWinnerPopup("Kamu menang ronde ini!");
+    }
+    if (
+      tetrisState.phase === "finished" &&
+      prevRoomPhaseRef.current !== "finished" &&
+      tetrisState.winnerId !== selfId &&
+      !!myRoomState &&
+      myRoomState.active &&
+      myRoomState.done &&
+      !watchAfterLose
+    ) {
+      queueMicrotask(() => setShowLosePopup(true));
+    }
+    prevDoneRef.current = !!myRoomState?.done;
+    prevRoomPhaseRef.current = tetrisState.phase;
+  }, [lostWhileRoundPlaying, myRoomState, queueWinnerPopup, selfId, tetrisState, watchAfterLose]);
+
+  useEffect(() => {
+    if (!tetrisState || tetrisState.phase !== "playing") {
+      queueMicrotask(() => setWatchAfterLose(false));
+      prevDoneRef.current = false;
+    }
+  }, [tetrisState]);
+
   return (
     <div className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6">
       <div className="rounded-3xl border border-white/10 bg-[radial-gradient(circle_at_top,#2a2746_0%,#121423_56%,#0b0d12_100%)] p-6">
         <h1 className="text-2xl font-semibold tracking-tight text-[#eef3ff]">Tetris Multiplayer</h1>
         <p className="mt-2 text-sm text-[#9aa7c4]">
-          Setiap pemain punya board sendiri. Mode spectate menampilkan semua board aktif.
-          Kontrol: <span className="text-[#e8ecff]">WASD + Q + Spasi</span>.
+          Setiap pemain punya board sendiri. User yang masuk saat ronde berjalan akan jadi spectator
+          sampai ronde selesai. Kontrol: <span className="text-[#e8ecff]">WASD + Q + Spasi</span>.
         </p>
         <p className="mt-3 text-xs text-[#8a95b2]">
-          Realtime {connected ? "terhubung" : "terputus"} · user di room tetris: {onlineTetrisUsers}
+          Realtime {connected ? "terhubung" : "terputus"} · user di room tetris: {onlineTetrisUsers} ·
+          round {tetrisState?.round ?? 0} · fase {tetrisState?.phase ?? "lobby"}
         </p>
       </div>
 
-      <div className="mt-6 grid gap-5 lg:grid-cols-[minmax(0,460px)_minmax(0,1fr)]">
-        <section className="rounded-2xl border border-white/10 bg-[#111726] p-4">
-          <canvas
-            ref={canvasRef}
-            width={CW}
-            height={CH}
-            className="max-w-full rounded-lg border border-[#2a3142]"
-          />
-          <div className="mt-4 flex flex-wrap items-center gap-3">
-            {(gameState === "menu" || gameState === "game_over") && (
-              <button
-                type="button"
-                onClick={newGame}
-                className="rounded-lg bg-[#3d4860] px-4 py-2 text-sm text-white hover:bg-[#4d5a78]"
-              >
-                {gameState === "game_over" ? "Main lagi" : "Mulai"}
-              </button>
-            )}
-            <p className="text-sm text-[#8f96ac]">
-              {statusText} · Skor {score} · Baris {lines} · Level {level}
-            </p>
-          </div>
-        </section>
-
-        <section className="rounded-2xl border border-white/10 bg-[#111726] p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-[#e9ecf4]">Spectate pemain lain</h2>
-            <span className="text-xs text-[#8f96ac]">{otherPlayingBoards.length} board aktif</span>
-          </div>
-          {otherPlayingBoards.length === 0 ? (
-            <p className="rounded-lg border border-dashed border-white/15 bg-[#0d1220] px-3 py-4 text-sm text-[#8f96ac]">
-              Belum ada pemain lain yang sedang bermain.
-            </p>
-          ) : (
-            <div className="grid gap-3 sm:grid-cols-2">
-              {otherPlayingBoards.map((player) => (
-                <SpectatorBoard key={player.id} player={player} />
-              ))}
+      <div className="mt-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
+        {!shouldShowSpectatorView ? (
+          <section className="rounded-2xl border border-white/10 bg-[#111726] p-4">
+            <canvas
+              ref={canvasRef}
+              width={CW}
+              height={CH}
+              className="max-w-full rounded-lg border border-[#2a3142]"
+            />
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <p className="text-sm text-[#8f96ac]">
+                {statusText} · Skor {score} · Baris {lines} · Level {level}
+              </p>
+              {tetrisState?.phase === "lobby" && (
+                <p className="text-xs text-[#9aa7c4]">Menunggu ready: {waitingReadyCount}</p>
+              )}
             </div>
+          </section>
+        ) : (
+          <section className="rounded-2xl border border-white/10 bg-[#111726] p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-[#e9ecf4]">Spectate pemain aktif</h2>
+              <span className="text-xs text-[#8f96ac]">{otherPlayingBoards.length} board aktif</span>
+            </div>
+            <p className="mb-3 text-xs text-[#ffdc78]">
+              {isSpectatorMode
+                ? "Kamu join saat ronde sedang berjalan, jadi spectate dulu sampai ronde selesai."
+                : "Kamu sudah kalah di ronde ini. Sekarang spectate sampai ronde selesai."}
+            </p>
+            {otherPlayingBoards.length === 0 ? (
+              <p className="rounded-lg border border-dashed border-white/15 bg-[#0d1220] px-3 py-4 text-sm text-[#8f96ac]">
+                Belum ada board aktif untuk ditonton.
+              </p>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {otherPlayingBoards.map((player) => (
+                  <SpectatorBoard key={player.id} player={player} />
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+
+        <aside className="rounded-2xl border border-white/10 bg-[#111726] p-4">
+          <h2 className="text-sm font-semibold text-[#e9ecf4]">Room Tetris</h2>
+          <p className="mt-2 text-xs text-[#9aa7c4]">
+            Fase: <span className="text-[#e8ecff]">{tetrisState?.phase ?? "lobby"}</span> ·
+            Menunggu ready: <span className="text-[#e8ecff]">{waitingReadyCount}</span>
+          </p>
+
+          {tetrisState?.phase === "lobby" && myRoomState && !myRoomState.spectator && (
+            <button
+              type="button"
+              onClick={() => sendTetrisReady(!myRoomState.ready)}
+              className="mt-3 w-full rounded-lg bg-[#3d4860] px-4 py-2 text-sm text-white hover:bg-[#4d5a78]"
+            >
+              {myRoomState.ready ? "Batal Ready" : "Ready"}
+            </button>
           )}
-        </section>
+
+          <h3 className="mt-4 text-xs font-semibold uppercase tracking-wide text-[#8f96ac]">
+            User di room
+          </h3>
+          <ul className="mt-2 space-y-1.5 text-xs text-[#9aa7c4]">
+            {roomRoster.map((p) => (
+              <li
+                key={p.id}
+                className="flex items-center justify-between rounded-md border border-white/10 bg-[#0f1420] px-2.5 py-2"
+              >
+                <span className="truncate text-[#e8ecff]">
+                  {p.name}
+                  {p.id === selfId ? " (kamu)" : ""}
+                </span>
+                <span className="text-[#8f96ac]">
+                  {p.spectator ? "spectator" : p.done ? "kalah" : p.ready ? "ready" : "idle"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </aside>
       </div>
+
+      {showWinnerPopup && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/65 px-4">
+          <div className="w-full max-w-sm rounded-xl border border-[#3a4660] bg-[#111725] p-5">
+            <h3 className="text-lg font-semibold text-[#e8ecff]">Winner</h3>
+            <p className="mt-2 text-sm text-[#9db0d0]">{winnerPopupText}</p>
+            <button
+              type="button"
+              onClick={() => setShowWinnerPopup(false)}
+              className="mt-4 w-full rounded-lg bg-[#3d4860] px-4 py-2 text-sm text-white hover:bg-[#4d5a78]"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showLosePopup && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/65 px-4">
+          <div className="w-full max-w-sm rounded-xl border border-[#5b3841] bg-[#1a1116] p-5">
+            <h3 className="text-lg font-semibold text-[#ffd9df]">Kamu kalah</h3>
+            <p className="mt-2 text-sm text-[#e3b7c1]">
+              Ronde ini selesai untukmu. Setelah popup ditutup, kamu akan spectate sampai ronde selesai.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setShowLosePopup(false);
+                setWatchAfterLose(true);
+              }}
+              className="mt-4 w-full rounded-lg bg-[#6e3a48] px-4 py-2 text-sm text-white hover:bg-[#844656]"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

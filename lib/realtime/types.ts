@@ -57,8 +57,24 @@ export type TetrisPlayerScreen = {
   updatedAt: number;
 };
 
+export type TetrisRoomPhase = "lobby" | "playing" | "finished";
+
+export type TetrisPlayerState = {
+  id: string;
+  name: string;
+  ready: boolean;
+  spectator: boolean;
+  active: boolean;
+  done: boolean;
+  score: number;
+};
+
 export type TetrisRealtimeState = {
+  phase: TetrisRoomPhase;
+  round: number;
+  winnerId: string | null;
   rows: number;
   cols: number;
+  roster: TetrisPlayerState[];
   players: TetrisPlayerScreen[];
 };
