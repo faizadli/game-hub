@@ -385,7 +385,10 @@ export function BombermanGame() {
   const onlinePlayers = (bomberState?.players ?? []).filter((p) =>
     users.some((u) => u.id === p.id && u.game === "bomberman")
   );
-  const waitingReady = onlinePlayers.filter((p) => !p.spectator && !p.ready).length;
+  const waitingReady =
+    bomberState?.phase === "lobby"
+      ? onlinePlayers.filter((p) => !p.spectator && !p.ready).length
+      : 0;
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6">
@@ -432,9 +435,17 @@ export function BombermanGame() {
         <aside className="space-y-4">
           <div className="rounded-2xl border border-white/10 bg-[#14101f] p-4">
             <h2 className="text-sm font-semibold text-[#ece8ff]">Match</h2>
-            <p className="mt-2 text-sm text-[#a89cc0]">
-              Menunggu ready: <span className="text-[#ece8ff]">{waitingReady}</span>
-            </p>
+            {bomberState?.phase === "lobby" && (
+              <p className="mt-2 text-sm text-[#a89cc0]">
+                Menunggu ready: <span className="text-[#ece8ff]">{waitingReady}</span>
+              </p>
+            )}
+            {bomberState?.phase === "playing" && (
+              <p className="mt-2 text-sm text-[#a89cc0]">Ronde sedang berlangsung.</p>
+            )}
+            {bomberState?.phase === "finished" && (
+              <p className="mt-2 text-sm text-[#a89cc0]">Ronde selesai.</p>
+            )}
             {me?.spectator && bomberState?.phase === "playing" && (
               <p className="mt-2 text-xs text-[#ffd78a]">
                 Kamu spectator sampai ronde ini selesai.
@@ -442,8 +453,8 @@ export function BombermanGame() {
             )}
             <button
               type="button"
-              disabled={!me || me.spectator || bomberState?.phase === "playing"}
-              onClick={() => sendBomberReady(!me?.ready)}
+              disabled={bomberState?.phase === "playing"}
+              onClick={() => sendBomberReady(!(me?.ready ?? false))}
               className="mt-4 w-full rounded-xl bg-[#7c3aed] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#8b5cf6] disabled:cursor-not-allowed disabled:opacity-45"
             >
               {me?.ready ? "Batal ready" : "Ready"}

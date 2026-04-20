@@ -153,9 +153,11 @@ export function SnakeGame() {
     users.some((u) => u.id === p.id && u.game === "snake")
   );
 
-  const waitingReadyCount = onlineSnakePlayers.filter(
-    (p) => !p.spectator && !p.ready
-  ).length;
+  /** Hanya relevan di lobby — saat playing server meng-set ready=false sehingga hitungan akan salah. */
+  const waitingReadyCount =
+    snakeState?.phase === "lobby"
+      ? onlineSnakePlayers.filter((p) => !p.spectator && !p.ready).length
+      : 0;
   const onlineCount = users.filter((u) => u.game === "snake").length;
 
   useEffect(() => {
@@ -228,9 +230,17 @@ export function SnakeGame() {
                 {connected ? "terhubung" : "terputus"}
               </span>
             </p>
-            <p className="mt-1 text-sm text-[#9db0d0]">
-              Menunggu ready: <span className="text-[#e9ecf4]">{waitingReadyCount}</span>
-            </p>
+            {snakeState?.phase === "lobby" && (
+              <p className="mt-1 text-sm text-[#9db0d0]">
+                Menunggu ready: <span className="text-[#e9ecf4]">{waitingReadyCount}</span>
+              </p>
+            )}
+            {snakeState?.phase === "playing" && (
+              <p className="mt-1 text-sm text-[#9db0d0]">Ronde sedang berlangsung.</p>
+            )}
+            {snakeState?.phase === "finished" && (
+              <p className="mt-1 text-sm text-[#9db0d0]">Ronde selesai.</p>
+            )}
             {me?.spectator && snakeState?.phase === "playing" && (
               <p className="mt-2 text-xs text-[#ffdc78]">
                 Kamu join saat ronde berjalan, jadi spectate dulu sampai ronde selesai.
@@ -239,7 +249,7 @@ export function SnakeGame() {
             <div className="mt-4">
               <button
                 type="button"
-                disabled={!me || me.spectator || snakeState?.phase === "playing"}
+                disabled={snakeState?.phase === "playing"}
                 onClick={() => sendSnakeReady(!(me?.ready ?? false))}
                 className="w-full rounded-xl bg-[#2f6df4] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#3f7df8] disabled:cursor-not-allowed disabled:opacity-50"
               >

@@ -431,6 +431,8 @@ export class LobbyRoom extends DurableObject {
 
       const current = this.clients.get(ws);
       if (!current) return;
+      // After session rebind, client id may differ from the initial welcome — resync so UI/input match server.
+      this.send(ws, { type: "welcome", id: current.id });
       const requestedName = data.name.trim().slice(0, 24) || "Guest";
       const name = this.getUniqueName(requestedName, current.id);
       current.name = name;
@@ -900,7 +902,9 @@ export class LobbyRoom extends DurableObject {
     tp.connected = true;
     this.clearTetrisDisconnectTimer(id);
 
-    if (this.tetrisPhase === "playing" && !tp.active) {
+    if (this.tetrisPhase === "lobby" || this.tetrisPhase === "finished") {
+      tp.spectator = false;
+    } else if (this.tetrisPhase === "playing" && !tp.active) {
       tp.spectator = true;
     }
   }
@@ -940,6 +944,9 @@ export class LobbyRoom extends DurableObject {
     if (!tp) return;
     tp.connected = true;
     if (this.tetrisPhase === "playing") return;
+    if (this.tetrisPhase === "lobby" || this.tetrisPhase === "finished") {
+      tp.spectator = false;
+    }
     tp.ready = value;
     this.broadcastTetrisState();
     this.tryStartTetrisRound();
@@ -1068,7 +1075,9 @@ export class LobbyRoom extends DurableObject {
       }
       return;
     }
-    if (this.phase === "playing" && !player.alive) {
+    if (this.phase === "lobby" || this.phase === "finished") {
+      player.spectator = false;
+    } else if (this.phase === "playing" && !player.alive) {
       player.spectator = true;
     }
   }
@@ -1079,6 +1088,9 @@ export class LobbyRoom extends DurableObject {
     const inSnake = this.snakePageUserIds().has(id);
     if (!inSnake) return;
     if (this.phase === "playing") return;
+    if (this.phase === "lobby" || this.phase === "finished") {
+      p.spectator = false;
+    }
     p.ready = value;
     this.broadcastSnakeState();
     this.tryStartRound();
@@ -1371,7 +1383,9 @@ export class LobbyRoom extends DurableObject {
     const p = this.bomberPlayers.get(id);
     if (!p) return;
     p.name = c.name;
-    if (this.bomberPhase === "playing" && !p.alive) {
+    if (this.bomberPhase === "lobby" || this.bomberPhase === "finished") {
+      p.spectator = false;
+    } else if (this.bomberPhase === "playing" && !p.alive) {
       p.spectator = true;
     }
   }
@@ -1440,6 +1454,9 @@ export class LobbyRoom extends DurableObject {
     const p = this.bomberPlayers.get(id);
     if (!p) return;
     if (this.bomberPhase === "playing") return;
+    if (this.bomberPhase === "lobby" || this.bomberPhase === "finished") {
+      p.spectator = false;
+    }
     p.ready = value;
     this.broadcastBomberState();
     this.tryStartBomberRound();
@@ -1755,6 +1772,14 @@ export class LobbyRoom extends DurableObject {
   }
 
   private broadcastBomberState() {
+    for (const c of this.clients.values()) {
+      if (c.game !== "bomberman") continue;
+      this.ensureBomberPlayer(c.id, c.name);
+      const bp = this.bomberPlayers.get(c.id);
+      if (bp && (this.bomberPhase === "lobby" || this.bomberPhase === "finished")) {
+        bp.spectator = false;
+      }
+    }
     const users = this.bomberPageUserIds();
     const players = [...this.bomberPlayers.values()]
       .filter((p) => users.has(p.id))
@@ -1821,6 +1846,14 @@ export class LobbyRoom extends DurableObject {
   }
 
   private broadcastSnakeState() {
+    for (const c of this.clients.values()) {
+      if (c.game !== "snake") continue;
+      this.ensurePlayer(c.id, c.name);
+      const sp = this.players.get(c.id);
+      if (sp && (this.phase === "lobby" || this.phase === "finished")) {
+        sp.spectator = false;
+      }
+    }
     const players = [...this.players.values()].map((p) => ({
       id: p.id,
       name: p.name,
@@ -1846,6 +1879,14 @@ export class LobbyRoom extends DurableObject {
   }
 
   private broadcastTetrisState() {
+    for (const c of this.clients.values()) {
+      if (c.game !== "tetris") continue;
+      this.ensureTetrisPlayer(c.id, c.name);
+      const tp = this.tetrisPlayers.get(c.id);
+      if (tp && (this.tetrisPhase === "lobby" || this.tetrisPhase === "finished")) {
+        tp.spectator = false;
+      }
+    }
     const tetrisUsers = this.tetrisPageUserIds();
     const roster = [...this.tetrisPlayers.values()]
       .filter((p) => tetrisUsers.has(p.id) || p.active)

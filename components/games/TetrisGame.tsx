@@ -99,6 +99,7 @@ export function TetrisGame() {
 
   const waitingReadyCount = useMemo(() => {
     if (!tetrisState) return 0;
+    if (tetrisState.phase === "playing") return 0;
     return (tetrisState.roster ?? []).filter((p) => !p.spectator && !p.ready).length;
   }, [tetrisState]);
   const roomRoster = useMemo(() => {
@@ -340,11 +341,24 @@ export function TetrisGame() {
         <aside className="rounded-2xl border border-white/10 bg-[#111726] p-4">
           <h2 className="text-sm font-semibold text-[#e9ecf4]">Room Tetris</h2>
           <p className="mt-2 text-xs text-[#9aa7c4]">
-            Fase: <span className="text-[#e8ecff]">{tetrisState?.phase ?? "lobby"}</span> ·
-            Menunggu ready: <span className="text-[#e8ecff]">{waitingReadyCount}</span>
+            Fase: <span className="text-[#e8ecff]">{tetrisState?.phase ?? "lobby"}</span>
+            {(tetrisState?.phase === "lobby" || tetrisState?.phase === "finished") && (
+              <>
+                {" "}
+                · Menunggu ready: <span className="text-[#e8ecff]">{waitingReadyCount}</span>
+              </>
+            )}
+            {tetrisState?.phase === "playing" && (
+              <>
+                {" "}
+                · <span className="text-[#e8ecff]">Ronde berlangsung</span>
+              </>
+            )}
           </p>
 
-          {tetrisState?.phase === "lobby" && myRoomState && !myRoomState.spectator && (
+          {(tetrisState?.phase === "lobby" || tetrisState?.phase === "finished") &&
+            myRoomState &&
+            !myRoomState.spectator && (
             <button
               type="button"
               onClick={() => sendTetrisReady(!myRoomState.ready)}
