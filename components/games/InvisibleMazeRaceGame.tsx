@@ -8,6 +8,7 @@ import type { MazePlayerState } from "@/lib/realtime/types";
 
 const CELL = 26;
 const HUD_HEIGHT = 48;
+const MEMORIZE_MS = 5500;
 
 function hash(value: string) {
   let h = 0;
@@ -25,6 +26,11 @@ export function InvisibleMazeRaceGame() {
   const mobileUi = useMobileGameUi();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [tick, setTick] = useState(0);
+  const [showResult, setShowResult] = useState(false);
+  const [resultTitle, setResultTitle] = useState("");
+  const [resultMessage, setResultMessage] = useState("");
+  const prevPhaseRef = useRef<string | null>(null);
+  const memorizeStartRef = useRef<number | null>(null);
 
   const me = useMemo(
     () => mazeState?.players.find((player) => player.id === selfId) ?? null,
@@ -37,8 +43,8 @@ export function InvisibleMazeRaceGame() {
   const height = rows * CELL + HUD_HEIGHT;
   const now = Date.now();
   const memorizeSecs =
-    mazeState?.phase === "memorize" && mazeState.revealUntilMs
-      ? Math.max(0, Math.ceil((mazeState.revealUntilMs - now) / 1000))
+    mazeState?.phase === "memorize" && memorizeStartRef.current !== null
+      ? Math.max(0, Math.ceil((memorizeStartRef.current + MEMORIZE_MS - now) / 1000))
       : 0;
 
   useEffect(() => {
@@ -55,35 +61,41 @@ export function InvisibleMazeRaceGame() {
     ctx.fillStyle = "#0a0f1a";
     ctx.fillRect(0, 0, width, height);
 
-    const showWalls = mazeState.gridVisible || mazeState.phase !== "racing";
-    for (let r = 0; r < mazeState.rows; r++) {
-      for (let c = 0; c < mazeState.cols; c++) {
-        const x = c * CELL;
-        const y = r * CELL;
-        const wall = mazeState.grid[r]?.[c] === 1;
+    const isPreStart = mazeState.phase === "lobby";
+    const showWalls = mazeState.gridVisible;
+    if (isPreStart) {
+      ctx.fillStyle = "#000000";
+      ctx.fillRect(0, 0, mazeState.cols * CELL, mazeState.rows * CELL);
+    } else {
+      for (let r = 0; r < mazeState.rows; r++) {
+        for (let c = 0; c < mazeState.cols; c++) {
+          const x = c * CELL;
+          const y = r * CELL;
+          const wall = mazeState.grid[r]?.[c] === 1;
 
-        if (wall && showWalls) {
-          ctx.fillStyle = "#374151";
-          ctx.fillRect(x, y, CELL, CELL);
-        } else {
-          ctx.fillStyle = (r + c) % 2 === 0 ? "#0f172a" : "#10192f";
-          ctx.fillRect(x, y, CELL, CELL);
-        }
-
-        if (!showWalls) {
-          ctx.strokeStyle = "rgba(255,255,255,0.05)";
-          ctx.strokeRect(x + 0.5, y + 0.5, CELL - 1, CELL - 1);
+          if (!showWalls) {
+            ctx.fillStyle = "#0f172a";
+            ctx.fillRect(x, y, CELL, CELL);
+            continue;
+          }
+          if (wall) {
+            ctx.fillStyle = "#374151";
+            ctx.fillRect(x, y, CELL, CELL);
+          } else {
+            ctx.fillStyle = (r + c) % 2 === 0 ? "#0f172a" : "#10192f";
+            ctx.fillRect(x, y, CELL, CELL);
+          }
         }
       }
+
+      const start = mazeState.start;
+      const goal = mazeState.goal;
+
+      ctx.fillStyle = "#22c55e";
+      ctx.fillRect(start.col * CELL + 4, start.row * CELL + 4, CELL - 8, CELL - 8);
+      ctx.fillStyle = "#ef4444";
+      ctx.fillRect(goal.col * CELL + 4, goal.row * CELL + 4, CELL - 8, CELL - 8);
     }
-
-    const start = mazeState.start;
-    const goal = mazeState.goal;
-
-    ctx.fillStyle = "#22c55e";
-    ctx.fillRect(start.col * CELL + 4, start.row * CELL + 4, CELL - 8, CELL - 8);
-    ctx.fillStyle = "#ef4444";
-    ctx.fillRect(goal.col * CELL + 4, goal.row * CELL + 4, CELL - 8, CELL - 8);
 
     mazeState.players.forEach((player: MazePlayerState, idx: number) => {
       if (player.spectator) return;
@@ -132,6 +144,45 @@ export function InvisibleMazeRaceGame() {
     return () => window.removeEventListener("keydown", onKey);
   }, [mazeState, me, sendMazeMove]);
 
+  useEffect(() => {
+    if (!mazeState) {
+      memorizeStartRef.current = null;
+      return;
+    }
+    if (mazeState.phase === "memorize") {
+      if (prevPhaseRef.current !== "memorize") {
+        memorizeStartRef.current = Date.now();
+      }
+    } else {
+      memorizeStartRef.current = null;
+    }
+  }, [mazeState]);
+
+  useEffect(() => {
+    if (!mazeState) {
+      prevPhaseRef.current = null;
+      return;
+    }
+    if (mazeState.phase === "finished" && prevPhaseRef.current !== "finished") {
+      const winnerPlayer =
+        mazeState.winnerId && mazeState.players.find((player) => player.id === mazeState.winnerId);
+      const isWinner = !!selfId && mazeState.winnerId === selfId;
+      setResultTitle(isWinner ? "Kamu Menang!" : "Kamu Kalah");
+      setResultMessage(
+        isWinner
+          ? "Mantap! Kamu paling cepat mencapai finish di ronde ini."
+          : winnerPlayer
+            ? `${winnerPlayer.name} mencapai finish lebih dulu. Coba lagi di ronde berikutnya.`
+            : "Ronde selesai tanpa pemenang."
+      );
+      setShowResult(true);
+    }
+    if (mazeState.phase === "lobby") {
+      setShowResult(false);
+    }
+    prevPhaseRef.current = mazeState.phase;
+  }, [mazeState, selfId]);
+
   const onPagePlayers = (mazeState?.players ?? []).filter((p) =>
     users.some((u) => u.id === p.id && u.game === "maze")
   );
@@ -171,19 +222,36 @@ export function InvisibleMazeRaceGame() {
             >
               {connected ? "Terhubung" : "Terputus"}
             </span>
-            {mazeState?.phase === "memorize" && (
-              <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-amber-200">
-                Sisa hafalan: {memorizeSecs}s
-              </span>
-            )}
           </div>
-          <div className="overflow-x-auto rounded-2xl border border-[#2a2438] bg-black/40 p-2">
+          <div className="relative overflow-x-auto rounded-2xl border border-[#2a2438] bg-black/40 p-2">
             <canvas
               ref={canvasRef}
               width={width}
               height={height}
               className="mx-auto block max-w-full rounded-xl"
             />
+            {mazeState?.phase === "lobby" && (
+              <div className="pointer-events-none absolute inset-2 flex items-center justify-center rounded-xl bg-[#05080fcc]/90 px-4 text-center">
+                <div className="max-w-md">
+                  <p className="text-base font-semibold text-[#fef3c7]">
+                    Bersiap! Tekan Ready untuk memulai ronde
+                  </p>
+                  <p className="mt-2 text-sm text-[#e5d2a9]">
+                    Saat permainan dimulai, kamu hanya punya beberapa detik untuk mengingat map sebelum
+                    semuanya kembali gelap.
+                  </p>
+                </div>
+              </div>
+            )}
+            {mazeState?.phase === "memorize" && (
+              <div className="pointer-events-none absolute inset-2 flex items-center justify-center">
+                {memorizeSecs <= 3 && memorizeSecs > 0 ? (
+                  <p className="select-none text-8xl font-black leading-none text-amber-200 [text-shadow:0_0_20px_rgba(0,0,0,0.9)]">
+                    {memorizeSecs}
+                  </p>
+                ) : null}
+              </div>
+            )}
           </div>
           {mobileUi && mazeState?.phase === "racing" && (
             <MobileDpad
@@ -251,6 +319,28 @@ export function InvisibleMazeRaceGame() {
           </div>
         </aside>
       </div>
+
+      {showResult && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-[#050308]/80 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-white/15 bg-[#161222] p-6 shadow-[0_30px_80px_-40px_rgba(80,40,160,0.5)]">
+            <h3
+              className={`text-lg font-semibold ${
+                resultTitle.includes("Menang") ? "text-[#c7f9cc]" : "text-[#ffb4a8]"
+              }`}
+            >
+              {resultTitle}
+            </h3>
+            <p className="mt-2 text-sm text-[#b8aacf]">{resultMessage}</p>
+            <button
+              type="button"
+              onClick={() => setShowResult(false)}
+              className="mt-5 w-full rounded-xl bg-[#d97706] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#ea8a16]"
+            >
+              Tutup
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

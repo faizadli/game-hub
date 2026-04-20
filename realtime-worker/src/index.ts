@@ -2191,10 +2191,14 @@ export class LobbyRoom extends DurableObject {
       }))
       .sort((a, b) => a.name.localeCompare(b.name));
 
-    const grid =
+    const fullGrid =
       this.mazeGrid.length > 0
         ? this.mazeGrid.map((row) => row.map((v) => v as 0 | 1))
         : Array.from({ length: MAZE_ROWS }, () => Array<0 | 1>(MAZE_COLS).fill(0));
+    const shouldReveal = this.mazePhase === "memorize";
+    const grid = shouldReveal
+      ? fullGrid
+      : Array.from({ length: MAZE_ROWS }, () => Array<0 | 1>(MAZE_COLS).fill(0));
 
     this.broadcast({
       type: "maze_state",
@@ -2205,7 +2209,7 @@ export class LobbyRoom extends DurableObject {
       cols: MAZE_COLS,
       start: { row: 1, col: 1 },
       goal: { row: MAZE_ROWS - 2, col: MAZE_COLS - 2 },
-      gridVisible: this.mazePhase !== "racing",
+      gridVisible: shouldReveal,
       revealUntilMs: this.mazePhase === "memorize" ? this.mazeRevealUntilMs : null,
       grid,
       players,
