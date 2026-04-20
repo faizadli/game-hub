@@ -21,4 +21,11 @@ export const GAMES: GameMeta[] = [
     accent: "#c792ea",
     icon: "▣",
   },
+  {
+    slug: "bomberman",
+    title: "Bomberman",
+    description: "Ledakan, brick, power-up — WASD + Spasi.",
+    accent: "#a78bfa",
+    icon: "◉",
+  },
 ];

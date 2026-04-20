@@ -1,6 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 
-type GameSlug = "hub" | "snake" | "tetris";
+type GameSlug = "hub" | "snake" | "tetris" | "bomberman";
 type SnakePhase = "lobby" | "playing" | "finished";
 
 type ClientState = {
@@ -81,8 +81,44 @@ type IncomingMessage =
   | { type: "page"; page: string }
   | { type: "ready"; value: boolean }
   | { type: "tetris_ready"; value: boolean }
+  | { type: "bomber_ready"; value: boolean }
   | { type: "direction"; dir: string }
-  | { type: "tetris_input"; action: string };
+  | { type: "tetris_input"; action: string }
+  | { type: "bomber_direction"; dir: string }
+  | { type: "bomber_bomb" };
+
+type BomberPhase = "lobby" | "playing" | "finished";
+type BomberBomb = {
+  id: string;
+  row: number;
+  col: number;
+  ticks: number;
+  range: number;
+  ownerId: string;
+};
+type BomberPlayer = {
+  id: string;
+  name: string;
+  ready: boolean;
+  spectator: boolean;
+  alive: boolean;
+  score: number;
+  row: number;
+  col: number;
+  pending: Vec;
+  bombRange: number;
+  maxBombs: number;
+};
+type BomberExplosion = { row: number; col: number; ttl: number };
+type BomberPowerup = { row: number; col: number; kind: "range" | "bomb" };
+
+const BOMBER_ROWS = 11;
+const BOMBER_COLS = 13;
+const BOMBER_TICK_MS = 200;
+const BOMBER_BOMB_FUSE_TICKS = 12;
+const BOMBER_EXPLO_TTL = 3;
+const BOMBER_MAX_RANGE = 5;
+const BOMBER_MAX_BOMBS = 3;
 
 const TETRIS_ROWS = 22;
 const TETRIS_COLS = 10;
@@ -317,6 +353,16 @@ export class LobbyRoom extends DurableObject {
   private tetrisRound = 0;
   private tetrisWinnerId: string | null = null;
   private tetrisFinishTimeout: number | null = null;
+  private bomberPlayers = new Map<string, BomberPlayer>();
+  private bomberPhase: BomberPhase = "lobby";
+  private bomberRound = 0;
+  private bomberWinnerId: string | null = null;
+  private bomberGrid: number[][] = [];
+  private bomberBombs: BomberBomb[] = [];
+  private bomberExplosions: BomberExplosion[] = [];
+  private bomberPowerups: BomberPowerup[] = [];
+  private bomberTickTimer: number | null = null;
+  private bomberFinishTimeout: number | null = null;
   private phase: SnakePhase = "lobby";
   private round = 0;
   private winnerId: string | null = null;
@@ -367,6 +413,7 @@ export class LobbyRoom extends DurableObject {
     this.broadcastPresence();
     this.broadcastSnakeState();
     this.broadcastTetrisState();
+    this.broadcastBomberState();
   }
 
   private handleMessage(ws: WebSocket, msg: unknown) {
@@ -393,10 +440,13 @@ export class LobbyRoom extends DurableObject {
       if (tp) tp.name = name;
       const screen = this.tetrisScreens.get(current.id);
       if (screen) screen.name = name;
+      const bp = this.bomberPlayers.get(current.id);
+      if (bp) bp.name = name;
       this.send(ws, { type: "name_ack", name, adjusted: name !== requestedName });
       this.broadcastPresence();
       this.broadcastSnakeState();
       this.broadcastTetrisState();
+      this.broadcastBomberState();
       return;
     }
 
@@ -406,9 +456,11 @@ export class LobbyRoom extends DurableObject {
       c.game = this.toGame(page);
       this.syncPlayerPresence(c.id);
       this.syncTetrisPresence(c.id);
+      this.syncBomberPresence(c.id);
       this.broadcastPresence();
       this.broadcastSnakeState();
       this.broadcastTetrisState();
+      this.broadcastBomberState();
       return;
     }
 
@@ -429,6 +481,21 @@ export class LobbyRoom extends DurableObject {
 
     if (data.type === "tetris_input" && typeof data.action === "string") {
       this.setTetrisInput(c.id, data.action);
+      return;
+    }
+
+    if (data.type === "bomber_ready" && typeof data.value === "boolean") {
+      this.setBomberReady(c.id, data.value);
+      return;
+    }
+
+    if (data.type === "bomber_direction" && typeof data.dir === "string") {
+      this.setBomberDirection(c.id, data.dir);
+      return;
+    }
+
+    if (data.type === "bomber_bomb") {
+      this.tryPlaceBomberBomb(c.id);
       return;
     }
   }
@@ -465,16 +532,30 @@ export class LobbyRoom extends DurableObject {
       this.tetrisScreens.delete(c.id);
       this.tetrisRuntime.delete(c.id);
     }
+    if (this.bomberPlayers.has(c.id)) {
+      const bmp = this.bomberPlayers.get(c.id)!;
+      if (this.bomberPhase === "playing" && bmp.alive && !bmp.spectator) {
+        bmp.alive = false;
+        bmp.spectator = true;
+      }
+      this.bomberPlayers.delete(c.id);
+      if (this.bomberPhase === "playing") {
+        this.tryFinishBomberRound();
+      }
+    }
     this.syncAfterLeave();
     this.syncTetrisAfterLeave();
+    this.syncBomberAfterLeave();
     this.broadcastPresence();
     this.broadcastSnakeState();
     this.broadcastTetrisState();
+    this.broadcastBomberState();
   }
 
   private toGame(path: string): GameSlug {
     if (path.startsWith("/games/snake")) return "snake";
     if (path.startsWith("/games/tetris")) return "tetris";
+    if (path.startsWith("/games/bomberman")) return "bomberman";
     return "hub";
   }
 
@@ -630,13 +711,11 @@ export class LobbyRoom extends DurableObject {
     for (const [dr, dc] of cells) {
       const rr = a.r + dr;
       const cc = a.c + dc;
-      if (rr < 0) {
-        player.done = true;
-        player.active = false;
-        runtime.active = null;
-        return;
+      // Bagian mino di atas baris 0 (zona spawn) wajar saat lock — jangan langsung game over.
+      if (rr < 0) continue;
+      if (rr < TETRIS_ROWS && cc >= 0 && cc < TETRIS_COLS) {
+        runtime.board[rr][cc] = a.kind;
       }
-      if (rr >= 0 && rr < TETRIS_ROWS) runtime.board[rr][cc] = a.kind;
     }
 
     let cleared = 0;
@@ -790,6 +869,7 @@ export class LobbyRoom extends DurableObject {
     this.tetrisPlayers.delete(current.id);
     this.tetrisScreens.delete(current.id);
     this.tetrisRuntime.delete(current.id);
+    this.bomberPlayers.delete(current.id);
 
     current.id = existingId;
     current.session = session;
@@ -860,7 +940,6 @@ export class LobbyRoom extends DurableObject {
     if (!tp) return;
     tp.connected = true;
     if (this.tetrisPhase === "playing") return;
-    if (tp.spectator) return;
     tp.ready = value;
     this.broadcastTetrisState();
     this.tryStartTetrisRound();
@@ -868,6 +947,7 @@ export class LobbyRoom extends DurableObject {
 
   private tryStartTetrisRound() {
     if (this.tetrisPhase === "playing") return;
+    if (this.tetrisPhase === "finished") return;
     const tetrisUsers = this.tetrisPageUserIds();
     const candidates = [...this.tetrisPlayers.values()].filter(
       (p) => tetrisUsers.has(p.id) && !p.spectator
@@ -946,6 +1026,14 @@ export class LobbyRoom extends DurableObject {
     }
     this.tetrisPhase = "finished";
     this.tetrisWinnerId = winnerId;
+    {
+      const tetrisUsers = this.tetrisPageUserIds();
+      for (const p of this.tetrisPlayers.values()) {
+        if (tetrisUsers.has(p.id)) {
+          p.spectator = false;
+        }
+      }
+    }
     this.broadcastTetrisState();
 
     this.tetrisFinishTimeout = setTimeout(() => {
@@ -991,7 +1079,6 @@ export class LobbyRoom extends DurableObject {
     const inSnake = this.snakePageUserIds().has(id);
     if (!inSnake) return;
     if (this.phase === "playing") return;
-    if (p.spectator) return;
     p.ready = value;
     this.broadcastSnakeState();
     this.tryStartRound();
@@ -1019,6 +1106,7 @@ export class LobbyRoom extends DurableObject {
 
   private tryStartRound() {
     if (this.phase === "playing") return;
+    if (this.phase === "finished") return;
     const snakeUsers = this.snakePageUserIds();
     const active = [...this.players.values()].filter((p) => snakeUsers.has(p.id) && !p.spectator);
     if (active.length < 2) return;
@@ -1193,6 +1281,14 @@ export class LobbyRoom extends DurableObject {
     this.phase = "finished";
     const alive = [...this.players.values()].find((p) => p.alive && !p.spectator);
     this.winnerId = alive?.id ?? null;
+    {
+      const snakeUsers = this.snakePageUserIds();
+      for (const p of this.players.values()) {
+        if (snakeUsers.has(p.id)) {
+          p.spectator = false;
+        }
+      }
+    }
     this.broadcastSnakeState();
 
     this.finishTimeout = setTimeout(() => {
@@ -1238,6 +1334,475 @@ export class LobbyRoom extends DurableObject {
     }
   }
 
+  private bomberPageUserIds() {
+    const ids = new Set<string>();
+    for (const c of this.clients.values()) {
+      if (c.game === "bomberman") ids.add(c.id);
+    }
+    return ids;
+  }
+
+  private ensureBomberPlayer(id: string, name: string) {
+    if (this.bomberPlayers.has(id)) return;
+    this.bomberPlayers.set(id, {
+      id,
+      name,
+      ready: false,
+      spectator: false,
+      alive: false,
+      score: 0,
+      row: 1,
+      col: 1,
+      pending: { dr: 0, dc: 0 },
+      bombRange: 1,
+      maxBombs: 1,
+    });
+  }
+
+  private syncBomberPresence(id: string) {
+    const onPage = this.bomberPageUserIds().has(id);
+    if (!onPage) {
+      this.bomberPlayers.delete(id);
+      return;
+    }
+    const c = [...this.clients.values()].find((x) => x.id === id);
+    if (!c) return;
+    this.ensureBomberPlayer(id, c.name);
+    const p = this.bomberPlayers.get(id);
+    if (!p) return;
+    p.name = c.name;
+    if (this.bomberPhase === "playing" && !p.alive) {
+      p.spectator = true;
+    }
+  }
+
+  private syncBomberAfterLeave() {
+    const ids = this.bomberPageUserIds();
+    for (const id of [...this.bomberPlayers.keys()]) {
+      if (!ids.has(id)) this.bomberPlayers.delete(id);
+    }
+    if (this.bomberPhase === "playing") {
+      this.tryFinishBomberRound();
+    }
+  }
+
+  private isBomberSpawnSafe(r: number, c: number) {
+    const zones: [number, number][] = [
+      [1, 1],
+      [1, 2],
+      [2, 1],
+      [1, BOMBER_COLS - 2],
+      [1, BOMBER_COLS - 3],
+      [2, BOMBER_COLS - 2],
+      [BOMBER_ROWS - 2, 1],
+      [BOMBER_ROWS - 2, 2],
+      [BOMBER_ROWS - 3, 1],
+      [BOMBER_ROWS - 2, BOMBER_COLS - 2],
+      [BOMBER_ROWS - 2, BOMBER_COLS - 3],
+      [BOMBER_ROWS - 3, BOMBER_COLS - 2],
+    ];
+    return zones.some(([rr, cc]) => rr === r && cc === c);
+  }
+
+  private createBomberGrid(): number[][] {
+    const g: number[][] = [];
+    for (let r = 0; r < BOMBER_ROWS; r++) {
+      const row: number[] = [];
+      for (let c = 0; c < BOMBER_COLS; c++) {
+        if (r === 0 || c === 0 || r === BOMBER_ROWS - 1 || c === BOMBER_COLS - 1) {
+          row.push(1);
+        } else if (
+          r % 2 === 0 &&
+          c % 2 === 0 &&
+          r > 0 &&
+          c > 0 &&
+          r < BOMBER_ROWS - 1 &&
+          c < BOMBER_COLS - 1
+        ) {
+          // Pilar di (genap, genap) — jangan (ganjil, ganjil) agar tidak bentrok dengan spawn sudut (1,1), dll.
+          row.push(1);
+        } else if (this.isBomberSpawnSafe(r, c)) {
+          row.push(0);
+        } else {
+          row.push(Math.random() < 0.52 ? 2 : 0);
+        }
+      }
+      g.push(row);
+    }
+    return g;
+  }
+
+  private setBomberReady(id: string, value: boolean) {
+    if (!this.bomberPageUserIds().has(id)) return;
+    const c = [...this.clients.values()].find((x) => x.id === id);
+    if (!c) return;
+    this.ensureBomberPlayer(id, c.name);
+    const p = this.bomberPlayers.get(id);
+    if (!p) return;
+    if (this.bomberPhase === "playing") return;
+    p.ready = value;
+    this.broadcastBomberState();
+    this.tryStartBomberRound();
+  }
+
+  private tryStartBomberRound() {
+    if (this.bomberPhase === "playing") return;
+    if (this.bomberPhase === "finished") return;
+    const users = this.bomberPageUserIds();
+    const candidates = [...this.bomberPlayers.values()].filter((p) => users.has(p.id) && !p.spectator);
+    if (candidates.length < 2) return;
+    if (!candidates.every((p) => p.ready)) return;
+    this.startBomberRound(candidates);
+  }
+
+  private startBomberRound(active: BomberPlayer[]) {
+    this.bomberPhase = "playing";
+    this.bomberRound += 1;
+    this.bomberWinnerId = null;
+    if (this.bomberFinishTimeout !== null) {
+      clearTimeout(this.bomberFinishTimeout);
+      this.bomberFinishTimeout = null;
+    }
+    this.bomberGrid = this.createBomberGrid();
+    this.bomberBombs = [];
+    this.bomberExplosions = [];
+    this.bomberPowerups = [];
+
+    const spawns: [number, number][] = [
+      [1, 1],
+      [1, BOMBER_COLS - 2],
+      [BOMBER_ROWS - 2, 1],
+      [BOMBER_ROWS - 2, BOMBER_COLS - 2],
+    ];
+
+    const userIds = this.bomberPageUserIds();
+    for (const p of this.bomberPlayers.values()) {
+      p.ready = false;
+      p.alive = false;
+      p.spectator = true;
+      p.pending = { dr: 0, dc: 0 };
+      p.bombRange = 1;
+      p.maxBombs = 1;
+    }
+
+    active.forEach((p, i) => {
+      const [sr, sc] = spawns[i % spawns.length];
+      p.spectator = false;
+      p.alive = true;
+      p.row = sr;
+      p.col = sc;
+      p.score = 0;
+    });
+
+    for (const p of this.bomberPlayers.values()) {
+      if (userIds.has(p.id) && !active.some((a) => a.id === p.id)) {
+        p.spectator = true;
+        p.alive = false;
+      }
+    }
+
+    this.resolveBomberOverlaps();
+    this.startBomberTick();
+    this.broadcastBomberState();
+  }
+
+  private resolveBomberOverlaps() {
+    const occupied = new Map<string, string>();
+    for (const p of this.bomberPlayers.values()) {
+      if (!p.alive || p.spectator) continue;
+      const k = `${p.row},${p.col}`;
+      if (occupied.has(k)) {
+        const otherId = occupied.get(k)!;
+        const other = this.bomberPlayers.get(otherId);
+        if (other) {
+          const dirs: Vec[] = [
+            { dr: 0, dc: 1 },
+            { dr: 0, dc: -1 },
+            { dr: 1, dc: 0 },
+            { dr: -1, dc: 0 },
+          ];
+          let moved = false;
+          for (const d of dirs) {
+            const nr = p.row + d.dr;
+            const nc = p.col + d.dc;
+            if (this.canBomberWalk(nr, nc, p.id)) {
+              p.row = nr;
+              p.col = nc;
+              moved = true;
+              break;
+            }
+          }
+          if (!moved) {
+            for (const d of dirs) {
+              const nr = other.row + d.dr;
+              const nc = other.col + d.dc;
+              if (this.canBomberWalk(nr, nc, other.id)) {
+                other.row = nr;
+                other.col = nc;
+                break;
+              }
+            }
+          }
+        }
+      }
+      occupied.set(`${p.row},${p.col}`, p.id);
+    }
+  }
+
+  private startBomberTick() {
+    if (this.bomberTickTimer !== null) return;
+    this.bomberTickTimer = setInterval(() => this.tickBomber(), BOMBER_TICK_MS) as unknown as number;
+  }
+
+  private stopBomberTick() {
+    if (this.bomberTickTimer !== null) {
+      clearInterval(this.bomberTickTimer);
+      this.bomberTickTimer = null;
+    }
+  }
+
+  private canBomberWalk(r: number, c: number, selfId: string) {
+    if (r < 0 || c < 0 || r >= BOMBER_ROWS || c >= BOMBER_COLS) return false;
+    if (this.bomberGrid[r][c] !== 0) return false;
+    if (this.bomberBombs.some((b) => b.row === r && b.col === c)) return false;
+    for (const p of this.bomberPlayers.values()) {
+      if (!p.alive || p.spectator || p.id === selfId) continue;
+      if (p.row === r && p.col === c) return false;
+    }
+    return true;
+  }
+
+  private setBomberDirection(id: string, dir: string) {
+    if (this.bomberPhase !== "playing") return;
+    const p = this.bomberPlayers.get(id);
+    if (!p || !p.alive || p.spectator) return;
+    const map: Record<string, Vec> = {
+      up: { dr: -1, dc: 0 },
+      down: { dr: 1, dc: 0 },
+      left: { dr: 0, dc: -1 },
+      right: { dr: 0, dc: 1 },
+      w: { dr: -1, dc: 0 },
+      s: { dr: 1, dc: 0 },
+      a: { dr: 0, dc: -1 },
+      d: { dr: 0, dc: 1 },
+    };
+    const v = map[dir];
+    if (!v) return;
+    p.pending = { dr: 0, dc: 0 };
+    const nr = p.row + v.dr;
+    const nc = p.col + v.dc;
+    if (!this.canBomberWalk(nr, nc, p.id)) {
+      this.broadcastBomberState();
+      return;
+    }
+    p.row = nr;
+    p.col = nc;
+    const pu = this.bomberPowerups.findIndex((x) => x.row === nr && x.col === nc);
+    if (pu >= 0) {
+      const k = this.bomberPowerups[pu]!.kind;
+      this.bomberPowerups.splice(pu, 1);
+      if (k === "range") p.bombRange = Math.min(BOMBER_MAX_RANGE, p.bombRange + 1);
+      if (k === "bomb") p.maxBombs = Math.min(BOMBER_MAX_BOMBS, p.maxBombs + 1);
+    }
+    this.broadcastBomberState();
+    this.tryFinishBomberRound();
+  }
+
+  private tryPlaceBomberBomb(id: string) {
+    if (this.bomberPhase !== "playing") return;
+    const p = this.bomberPlayers.get(id);
+    if (!p || !p.alive || p.spectator) return;
+    const owned = this.bomberBombs.filter((b) => b.ownerId === id).length;
+    if (owned >= p.maxBombs) return;
+    if (this.bomberBombs.some((b) => b.row === p.row && b.col === p.col)) return;
+    this.bomberBombs.push({
+      id: crypto.randomUUID(),
+      row: p.row,
+      col: p.col,
+      ticks: BOMBER_BOMB_FUSE_TICKS,
+      range: p.bombRange,
+      ownerId: id,
+    });
+    this.broadcastBomberState();
+  }
+
+  private tickBomber() {
+    if (this.bomberPhase !== "playing") return;
+
+    const toExplode: BomberBomb[] = [];
+    for (const b of this.bomberBombs) {
+      b.ticks -= 1;
+      if (b.ticks <= 0) toExplode.push(b);
+    }
+    if (toExplode.length > 0) {
+      this.processBomberExplosionChain(toExplode);
+    }
+
+    this.bomberExplosions = this.bomberExplosions
+      .map((e) => ({ ...e, ttl: e.ttl - 1 }))
+      .filter((e) => e.ttl > 0);
+
+    this.broadcastBomberState();
+    this.tryFinishBomberRound();
+  }
+
+  /** One simultaneous wave: expired bombs + chain reactions. */
+  private processBomberExplosionChain(seeds: BomberBomb[]) {
+    const flame = new Set<string>();
+    const queue: BomberBomb[] = [...seeds];
+    const exploded = new Set<string>();
+    const primaryOwnerId = seeds[0]?.ownerId ?? "";
+
+    const addRayForBomb = (b: BomberBomb, dr: number, dc: number) => {
+      let r = b.row;
+      let c = b.col;
+      for (let i = 0; i < b.range; i++) {
+        r += dr;
+        c += dc;
+        if (r < 0 || c < 0 || r >= BOMBER_ROWS || c >= BOMBER_COLS) break;
+        const cell = this.bomberGrid[r][c];
+        if (cell === 1) break;
+        flame.add(`${r},${c}`);
+        const other = this.bomberBombs.find((bb) => bb.row === r && bb.col === c);
+        if (other && !exploded.has(other.id)) {
+          flame.add(`${r},${c}`);
+          queue.push(other);
+          break;
+        }
+        if (cell === 2) break;
+      }
+    };
+
+    while (queue.length) {
+      const b = queue.shift()!;
+      if (exploded.has(b.id)) continue;
+      exploded.add(b.id);
+      this.bomberBombs = this.bomberBombs.filter((x) => x.id !== b.id);
+      flame.add(`${b.row},${b.col}`);
+      addRayForBomb(b, -1, 0);
+      addRayForBomb(b, 1, 0);
+      addRayForBomb(b, 0, -1);
+      addRayForBomb(b, 0, 1);
+    }
+
+    for (const key of flame) {
+      const [rs, cs] = key.split(",").map(Number) as [number, number];
+      this.bomberExplosions.push({ row: rs, col: cs, ttl: BOMBER_EXPLO_TTL });
+      if (this.bomberGrid[rs][cs] === 2) {
+        this.bomberGrid[rs][cs] = 0;
+        if (Math.random() < 0.34) {
+          const kind: "range" | "bomb" = Math.random() < 0.5 ? "range" : "bomb";
+          if (!this.bomberPowerups.some((p) => p.row === rs && p.col === cs)) {
+            this.bomberPowerups.push({ row: rs, col: cs, kind });
+          }
+        }
+      }
+    }
+
+    const killer = primaryOwnerId ? this.bomberPlayers.get(primaryOwnerId) : null;
+    for (const p of this.bomberPlayers.values()) {
+      if (!p.alive || p.spectator) continue;
+      if (flame.has(`${p.row},${p.col}`)) {
+        p.alive = false;
+        p.spectator = true;
+        if (killer && killer.id !== p.id && killer.alive && !killer.spectator) {
+          killer.score += 100;
+        }
+      }
+    }
+  }
+
+  private tryFinishBomberRound() {
+    if (this.bomberPhase !== "playing") return;
+    const alive = [...this.bomberPlayers.values()].filter((p) => p.alive && !p.spectator);
+    if (alive.length <= 1) {
+      this.finishBomberRound(alive[0]?.id ?? null);
+    }
+  }
+
+  private finishBomberRound(winnerId: string | null) {
+    if (this.bomberPhase !== "playing") return;
+    this.stopBomberTick();
+    this.bomberPhase = "finished";
+    this.bomberWinnerId = winnerId;
+    this.bomberBombs = [];
+    {
+      const users = this.bomberPageUserIds();
+      for (const p of this.bomberPlayers.values()) {
+        if (users.has(p.id)) {
+          p.spectator = false;
+        }
+      }
+    }
+    this.broadcastBomberState();
+
+    this.bomberFinishTimeout = setTimeout(() => {
+      const users = this.bomberPageUserIds();
+      for (const p of this.bomberPlayers.values()) {
+        p.ready = false;
+        p.alive = false;
+        p.spectator = false;
+        p.score = 0;
+        if (!users.has(p.id)) this.bomberPlayers.delete(p.id);
+      }
+      this.bomberPhase = "lobby";
+      this.bomberWinnerId = null;
+      this.bomberExplosions = [];
+      this.bomberPowerups = [];
+      this.bomberGrid = [];
+      this.broadcastBomberState();
+    }, 3200) as unknown as number;
+  }
+
+  private broadcastBomberState() {
+    const users = this.bomberPageUserIds();
+    const players = [...this.bomberPlayers.values()]
+      .filter((p) => users.has(p.id))
+      .map((p) => ({
+        id: p.id,
+        name: p.name,
+        ready: p.ready,
+        spectator: p.spectator,
+        alive: p.alive,
+        score: p.score,
+        row: p.row,
+        col: p.col,
+        bombRange: p.bombRange,
+        maxBombs: p.maxBombs,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    const grid =
+      this.bomberGrid.length > 0
+        ? this.bomberGrid.map((row) => row.map((v) => v as 0 | 1 | 2))
+        : Array.from({ length: BOMBER_ROWS }, () => Array<0 | 1 | 2>(BOMBER_COLS).fill(0));
+
+    this.broadcast({
+      type: "bomber_state",
+      phase: this.bomberPhase,
+      round: this.bomberRound,
+      winnerId: this.bomberWinnerId,
+      rows: BOMBER_ROWS,
+      cols: BOMBER_COLS,
+      grid,
+      players,
+      bombs: this.bomberBombs.map((b) => ({
+        id: b.id,
+        row: b.row,
+        col: b.col,
+        ticks: b.ticks,
+        range: b.range,
+        ownerId: b.ownerId,
+      })),
+      explosions: this.bomberExplosions.map((e) => ({
+        row: e.row,
+        col: e.col,
+        ttl: e.ttl,
+      })),
+      powerups: this.bomberPowerups.map((p) => ({ row: p.row, col: p.col, kind: p.kind })),
+    });
+  }
+
   private broadcastPresence() {
     const users = [...this.clients.values()].map((c) => ({
       id: c.id,
@@ -1250,6 +1815,7 @@ export class LobbyRoom extends DurableObject {
       hub: users.filter((u) => u.game === "hub").length,
       snake: users.filter((u) => u.game === "snake").length,
       tetris: users.filter((u) => u.game === "tetris").length,
+      bomberman: users.filter((u) => u.game === "bomberman").length,
     };
     this.broadcast({ type: "presence", users, counts });
   }

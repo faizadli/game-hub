@@ -11,6 +11,7 @@ import {
 } from "react";
 import { usePathname } from "next/navigation";
 import type {
+  BomberRealtimeState,
   GameCounts,
   GameSlug,
   PresenceUser,
@@ -28,10 +29,14 @@ type RealtimeContextValue = {
   counts: GameCounts;
   snakeState: SnakeRealtimeState | null;
   tetrisState: TetrisRealtimeState | null;
+  bomberState: BomberRealtimeState | null;
   sendTetrisReady: (value: boolean) => void;
   sendSnakeReady: (value: boolean) => void;
   sendSnakeDirection: (dir: "up" | "down" | "left" | "right") => void;
   sendTetrisInput: (action: TetrisInputAction) => void;
+  sendBomberReady: (value: boolean) => void;
+  sendBomberDirection: (dir: "up" | "down" | "left" | "right") => void;
+  sendBomberBomb: () => void;
 };
 
 const defaultCounts: GameCounts = {
@@ -39,6 +44,7 @@ const defaultCounts: GameCounts = {
   hub: 0,
   snake: 0,
   tetris: 0,
+  bomberman: 0,
 };
 
 const Ctx = createContext<RealtimeContextValue | null>(null);
@@ -46,6 +52,7 @@ const Ctx = createContext<RealtimeContextValue | null>(null);
 function toGame(pathname: string): GameSlug {
   if (pathname.startsWith("/games/snake")) return "snake";
   if (pathname.startsWith("/games/tetris")) return "tetris";
+  if (pathname.startsWith("/games/bomberman")) return "bomberman";
   return "hub";
 }
 
@@ -88,6 +95,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const [counts, setCounts] = useState<GameCounts>(defaultCounts);
   const [snakeState, setSnakeState] = useState<SnakeRealtimeState | null>(null);
   const [tetrisState, setTetrisState] = useState<TetrisRealtimeState | null>(null);
+  const [bomberState, setBomberState] = useState<BomberRealtimeState | null>(null);
 
   const setUsername = useCallback((name: string) => {
     const cleaned = name.trim().slice(0, 24);
@@ -156,6 +164,8 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
           setSnakeState(msg);
         } else if (msg.type === "tetris_state") {
           setTetrisState(msg);
+        } else if (msg.type === "bomber_state") {
+          setBomberState(msg);
         }
       } catch {
         // ignore malformed payload
@@ -168,6 +178,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
         setSelfId(null);
         setSnakeState(null);
         setTetrisState(null);
+        setBomberState(null);
         setCounts(defaultCounts);
       }, 1200);
     };
@@ -213,6 +224,24 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     ws.send(JSON.stringify({ type: "tetris_input", action }));
   }, []);
 
+  const sendBomberReady = useCallback((value: boolean) => {
+    const ws = socketRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify({ type: "bomber_ready", value }));
+  }, []);
+
+  const sendBomberDirection = useCallback((dir: "up" | "down" | "left" | "right") => {
+    const ws = socketRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify({ type: "bomber_direction", dir }));
+  }, []);
+
+  const sendBomberBomb = useCallback(() => {
+    const ws = socketRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify({ type: "bomber_bomb" }));
+  }, []);
+
   const value = useMemo<RealtimeContextValue>(
     () => ({
       connected,
@@ -223,10 +252,14 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       counts,
       snakeState,
       tetrisState,
+      bomberState,
       sendTetrisReady,
       sendSnakeReady,
       sendSnakeDirection,
       sendTetrisInput,
+      sendBomberReady,
+      sendBomberDirection,
+      sendBomberBomb,
     }),
     [
       connected,
@@ -237,10 +270,14 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       counts,
       snakeState,
       tetrisState,
+      bomberState,
       sendTetrisReady,
       sendSnakeReady,
       sendSnakeDirection,
       sendTetrisInput,
+      sendBomberReady,
+      sendBomberDirection,
+      sendBomberBomb,
     ]
   );
 

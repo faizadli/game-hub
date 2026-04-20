@@ -13,6 +13,7 @@ export function GameHub() {
   const gameCountBySlug: Record<string, number> = {
     snake: counts.snake,
     tetris: counts.tetris,
+    bomberman: counts.bomberman,
   };
 
   return (

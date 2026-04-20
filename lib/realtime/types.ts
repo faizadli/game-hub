@@ -1,4 +1,4 @@
-export type GameSlug = "hub" | "snake" | "tetris";
+export type GameSlug = "hub" | "snake" | "tetris" | "bomberman";
 export type SnakePhase = "lobby" | "playing" | "finished";
 
 export type PresenceUser = {
@@ -13,6 +13,7 @@ export type GameCounts = {
   hub: number;
   snake: number;
   tetris: number;
+  bomberman: number;
 };
 
 export type SnakePlayerState = {
@@ -83,4 +84,50 @@ export type TetrisRealtimeState = {
   cols: number;
   roster: TetrisPlayerState[];
   players: TetrisPlayerScreen[];
+};
+
+export type BomberPhase = "lobby" | "playing" | "finished";
+
+/** 0 empty, 1 hard wall, 2 soft block */
+export type BomberCell = 0 | 1 | 2;
+
+export type BomberBombState = {
+  id: string;
+  row: number;
+  col: number;
+  ticks: number;
+  range: number;
+  ownerId: string;
+};
+
+export type BomberExplosionCell = { row: number; col: number; ttl: number };
+
+export type BomberPowerupKind = "range" | "bomb";
+
+export type BomberPowerupCell = { row: number; col: number; kind: BomberPowerupKind };
+
+export type BomberPlayerState = {
+  id: string;
+  name: string;
+  ready: boolean;
+  spectator: boolean;
+  alive: boolean;
+  score: number;
+  row: number;
+  col: number;
+  bombRange: number;
+  maxBombs: number;
+};
+
+export type BomberRealtimeState = {
+  phase: BomberPhase;
+  round: number;
+  winnerId: string | null;
+  rows: number;
+  cols: number;
+  grid: BomberCell[][];
+  players: BomberPlayerState[];
+  bombs: BomberBombState[];
+  explosions: BomberExplosionCell[];
+  powerups: BomberPowerupCell[];
 };
