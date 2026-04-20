@@ -1,6 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 
-type GameSlug = "hub" | "snake" | "tetris" | "bomberman";
+type GameSlug = "hub" | "snake" | "tetris" | "bomberman" | "flappy";
 type SnakePhase = "lobby" | "playing" | "finished";
 
 type ClientState = {
@@ -509,6 +509,7 @@ export class LobbyRoom extends DurableObject {
   private removeClient(ws: WebSocket) {
     const c = this.clients.get(ws);
     if (!c) return;
+
     this.clients.delete(ws);
     this.players.delete(c.id);
     const tp = this.tetrisPlayers.get(c.id);
@@ -562,6 +563,7 @@ export class LobbyRoom extends DurableObject {
     if (path.startsWith("/games/snake")) return "snake";
     if (path.startsWith("/games/tetris")) return "tetris";
     if (path.startsWith("/games/bomberman")) return "bomberman";
+    if (path.startsWith("/games/flappy")) return "flappy";
     return "hub";
   }
 
@@ -1855,6 +1857,7 @@ export class LobbyRoom extends DurableObject {
       snake: users.filter((u) => u.game === "snake").length,
       tetris: users.filter((u) => u.game === "tetris").length,
       bomberman: users.filter((u) => u.game === "bomberman").length,
+      flappy: users.filter((u) => u.game === "flappy").length,
     };
     this.broadcast({ type: "presence", users, counts });
   }

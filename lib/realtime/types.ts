@@ -1,4 +1,4 @@
-export type GameSlug = "hub" | "snake" | "tetris" | "bomberman";
+export type GameSlug = "hub" | "snake" | "tetris" | "bomberman" | "flappy";
 export type SnakePhase = "lobby" | "playing" | "finished";
 
 export type PresenceUser = {
@@ -14,6 +14,7 @@ export type GameCounts = {
   snake: number;
   tetris: number;
   bomberman: number;
+  flappy: number;
 };
 
 export type SnakePlayerState = {

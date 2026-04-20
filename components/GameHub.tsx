@@ -14,6 +14,7 @@ export function GameHub() {
     snake: counts.snake,
     tetris: counts.tetris,
     bomberman: counts.bomberman,
+    flappy: counts.flappy,
   };
 
   return (

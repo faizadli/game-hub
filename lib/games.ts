@@ -28,4 +28,11 @@ export const GAMES: GameMeta[] = [
     accent: "#a78bfa",
     icon: "◉",
   },
+  {
+    slug: "flappy",
+    title: "Flappy Bird",
+    description: "Solo — Spasi / sentuh, skor terbaik tersimpan di perangkat.",
+    accent: "#38bdf8",
+    icon: "△",
+  },
 ];
