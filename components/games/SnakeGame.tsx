@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRealtime } from "@/components/realtime/RealtimeProvider";
+import { MobileDpad } from "@/components/games/MobileDpad";
+import { useMobileGameUi } from "@/lib/hooks/useMobileGameUi";
 import type { SnakePlayerState } from "@/lib/realtime/types";
 
 const CELL = 22;
@@ -47,6 +49,7 @@ export function SnakeGame() {
     sendSnakeDirection,
     connected,
   } = useRealtime();
+  const mobileUi = useMobileGameUi();
 
   const rows = snakeState?.rows ?? 18;
   const cols = snakeState?.cols ?? 24;
@@ -198,6 +201,12 @@ export function SnakeGame() {
         <p className="mt-2 max-w-3xl text-sm text-[#9ca8c2]">
           Ready bareng, bertahan paling lama, dan lihat hasil ronde secara langsung.
         </p>
+        {mobileUi && (
+          <p className="mt-2 text-xs text-[#7d8ba8]">
+            Di HP/tablet: gunakan kontrol sentuh di bawah arena saat ronde berjalan (panah). Atau tetap
+            pakai WASD/arrow di keyboard.
+          </p>
+        )}
       </div>
 
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
@@ -217,8 +226,15 @@ export function SnakeGame() {
             ref={canvasRef}
             width={width}
             height={totalHeight}
-            className="w-full rounded-2xl border border-white/10 bg-[#0b1120]"
+            className="w-full max-w-full rounded-2xl border border-white/10 bg-[#0b1120]"
           />
+          {mobileUi && snakeState?.phase === "playing" && (
+            <MobileDpad
+              className="mt-4"
+              disabled={!me || me.spectator || !me.alive}
+              onDirection={(dir) => sendSnakeDirection(dir)}
+            />
+          )}
         </section>
 
         <aside className="space-y-4">

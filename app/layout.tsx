@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { RealtimeShell } from "@/components/realtime/RealtimeShell";
 import "./globals.css";
@@ -16,6 +16,13 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Game Hub",
   description: "Game sederhana di browser — Snake, Tetris, Typing, dll.",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#0b0d12",
 };
 
 export default function RootLayout({

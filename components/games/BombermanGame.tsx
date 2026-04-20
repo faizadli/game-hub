@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRealtime } from "@/components/realtime/RealtimeProvider";
+import { MobileDpad } from "@/components/games/MobileDpad";
+import { useMobileGameUi } from "@/lib/hooks/useMobileGameUi";
 import type { BomberPlayerState } from "@/lib/realtime/types";
 
 const CELL = 40;
@@ -219,6 +221,7 @@ export function BombermanGame() {
     connected,
     users,
   } = useRealtime();
+  const mobileUi = useMobileGameUi();
 
   const rows = bomberState?.rows ?? 11;
   const cols = bomberState?.cols ?? 13;
@@ -309,7 +312,7 @@ export function BombermanGame() {
       rows * CELL + HUD_H / 2
     );
     ctx.textAlign = "right";
-    ctx.fillText("WASD gerak · Spasi bom · Enter ready", w - 12, rows * CELL + HUD_H / 2);
+    ctx.fillText("WASD / sentuh · Spasi bom · Enter ready", w - 12, rows * CELL + HUD_H / 2);
   }, [bomberState, cols, h, rows, selfId, users, w]);
 
   useEffect(() => {
@@ -401,6 +404,12 @@ export function BombermanGame() {
           Ledakan berantai, blok brick, power-up jarak &amp; jumlah bom. Minimal dua pemain ready untuk
           mulai.
         </p>
+        {mobileUi && (
+          <p className="mt-2 text-xs text-[#8a7ca0]">
+            Di HP: pakai kontrol sentuh di bawah arena (arah + bom di tengah). Keyboard WASD dan Spasi
+            tetap didukung.
+          </p>
+        )}
       </div>
 
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
@@ -430,6 +439,18 @@ export function BombermanGame() {
               className="mx-auto block max-w-full rounded-xl shadow-[0_20px_50px_rgba(0,0,0,0.65)]"
             />
           </div>
+          {mobileUi && bomberState?.phase === "playing" && (
+            <MobileDpad
+              className="mt-4"
+              disabled={!me || me.spectator || !me.alive}
+              onDirection={(dir) => sendBomberDirection(dir)}
+              center={{
+                label: "💣",
+                onPress: () => sendBomberBomb(),
+                disabled: !me || me.spectator || !me.alive,
+              }}
+            />
+          )}
         </section>
 
         <aside className="space-y-4">

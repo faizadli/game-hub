@@ -1,8 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { MobileTetrisControls } from "@/components/games/MobileTetrisControls";
 import { useKeyboardState } from "@/lib/game/useKeyboardState";
 import { useRealtime } from "@/components/realtime/RealtimeProvider";
+import { useMobileGameUi } from "@/lib/hooks/useMobileGameUi";
 import type { TetrisBoard, TetrisPlayerScreen } from "@/lib/realtime/types";
 
 const COLS = 10;
@@ -62,6 +64,7 @@ function SpectatorBoard({ player }: { player: TetrisPlayerScreen }) {
 export function TetrisGame() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const { selfId, tetrisState, sendTetrisReady, sendTetrisInput, connected, users } = useRealtime();
+  const mobileUi = useMobileGameUi();
   const [showWinnerPopup, setShowWinnerPopup] = useState(false);
   const [showLosePopup, setShowLosePopup] = useState(false);
   const [watchAfterLose, setWatchAfterLose] = useState(false);
@@ -286,7 +289,15 @@ export function TetrisGame() {
         <h1 className="text-2xl font-semibold tracking-tight text-[#eef3ff]">Tetris Multiplayer</h1>
         <p className="mt-2 text-sm text-[#9aa7c4]">
           Setiap pemain punya board sendiri. User yang masuk saat ronde berjalan akan jadi spectator
-          sampai ronde selesai. Kontrol: <span className="text-[#e8ecff]">WASD + Q + Spasi</span>.
+          sampai ronde selesai. Kontrol: <span className="text-[#e8ecff]">WASD + Q + Spasi</span>
+          {mobileUi ? (
+            <>
+              {" "}
+              — di layar sentuh gunakan <span className="text-[#e8ecff]">tombol di bawah board</span>.
+            </>
+          ) : (
+            "."
+          )}
         </p>
         <p className="mt-3 text-xs text-[#8a95b2]">
           Realtime {connected ? "terhubung" : "terputus"} · user di room tetris: {onlineTetrisUsers} ·
@@ -297,12 +308,14 @@ export function TetrisGame() {
       <div className="mt-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
         {!shouldShowSpectatorView ? (
           <section className="rounded-2xl border border-white/10 bg-[#111726] p-4">
-            <canvas
-              ref={canvasRef}
-              width={CW}
-              height={CH}
-              className="max-w-full rounded-lg border border-[#2a3142]"
-            />
+            <div className="-mx-1 overflow-x-auto pb-1">
+              <canvas
+                ref={canvasRef}
+                width={CW}
+                height={CH}
+                className="rounded-lg border border-[#2a3142]"
+              />
+            </div>
             <div className="mt-4 flex flex-wrap items-center gap-3">
               <p className="text-sm text-[#8f96ac]">
                 {statusText} · Skor {myScreen?.score ?? 0} · Baris {myScreen?.lines ?? 0} · Level{" "}
@@ -312,6 +325,15 @@ export function TetrisGame() {
                 <p className="text-xs text-[#9aa7c4]">Menunggu ready: {waitingReadyCount}</p>
               )}
             </div>
+            {mobileUi &&
+              tetrisState?.phase === "playing" &&
+              canPlayThisRound && (
+                <MobileTetrisControls
+                  className="mt-4"
+                  disabled={!canPlayThisRound}
+                  onAction={(action) => sendTetrisInput(action)}
+                />
+              )}
           </section>
         ) : (
           <section className="rounded-2xl border border-white/10 bg-[#111726] p-4">
