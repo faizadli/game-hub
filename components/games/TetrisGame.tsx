@@ -288,8 +288,9 @@ export function TetrisGame() {
       <div className="rounded-3xl border border-white/10 bg-[radial-gradient(circle_at_top,#2a2746_0%,#121423_56%,#0b0d12_100%)] p-6">
         <h1 className="text-2xl font-semibold tracking-tight text-[#eef3ff]">Tetris Multiplayer</h1>
         <p className="mt-2 text-sm text-[#9aa7c4]">
-          Setiap pemain punya board sendiri. User yang masuk saat ronde berjalan akan jadi spectator
-          sampai ronde selesai. Kontrol: <span className="text-[#e8ecff]">WASD + Q + Spasi</span>
+          Setiap pemain punya board sendiri — bisa solo (satu orang ready) atau versus. User yang masuk saat
+          ronde berjalan jadi spectator sampai ronde selesai. Kontrol:{" "}
+          <span className="text-[#e8ecff]">WASD + Q + Spasi</span>
           {mobileUi ? (
             <>
               {" "}

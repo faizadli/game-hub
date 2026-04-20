@@ -199,7 +199,8 @@ export function SnakeGame() {
           Arena real-time tanpa akun
         </h1>
         <p className="mt-2 max-w-3xl text-sm text-[#9ca8c2]">
-          Ready bareng, bertahan paling lama, dan lihat hasil ronde secara langsung.
+          Bisa latihan solo (cukup kamu sendiri ready) atau multiplayer: bertahan paling lama dan lihat hasil
+          ronde.
         </p>
         {mobileUi && (
           <p className="mt-2 text-xs text-[#7d8ba8]">

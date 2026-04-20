@@ -369,6 +369,10 @@ export class LobbyRoom extends DurableObject {
   private food: Cell = { row: 0, col: 0 };
   private tickTimer: number | null = null;
   private finishTimeout: number | null = null;
+  /** Ronde dimulai dengan satu pemain — jangan auto-selesai saat masih ada satu snake hidup. */
+  private snakeSoloRound = false;
+  /** Ronde Tetris dimulai dengan satu pemain aktif — selesai hanya setelah ia kalah (done). */
+  private tetrisSoloRound = false;
 
   private readonly rows = 18;
   private readonly cols = 24;
@@ -965,6 +969,7 @@ export class LobbyRoom extends DurableObject {
   }
 
   private startTetrisRound(active: TetrisPlayer[]) {
+    this.tetrisSoloRound = active.length === 1;
     this.tetrisPhase = "playing";
     this.tetrisRound += 1;
     this.tetrisWinnerId = null;
@@ -1020,6 +1025,12 @@ export class LobbyRoom extends DurableObject {
       return;
     }
     const survivors = active.filter((p) => !p.done);
+    if (this.tetrisSoloRound) {
+      if (survivors.length === 0) {
+        this.finishTetrisRound(null);
+      }
+      return;
+    }
     if (survivors.length <= 1) {
       this.finishTetrisRound(survivors[0]?.id ?? null);
     }
@@ -1121,12 +1132,13 @@ export class LobbyRoom extends DurableObject {
     if (this.phase === "finished") return;
     const snakeUsers = this.snakePageUserIds();
     const active = [...this.players.values()].filter((p) => snakeUsers.has(p.id) && !p.spectator);
-    if (active.length < 2) return;
+    if (active.length < 1) return;
     if (!active.every((p) => p.ready)) return;
     this.startRound(active);
   }
 
   private startRound(active: SnakePlayer[]) {
+    this.snakeSoloRound = active.length === 1;
     this.phase = "playing";
     this.round += 1;
     this.winnerId = null;
@@ -1226,7 +1238,7 @@ export class LobbyRoom extends DurableObject {
   private tick() {
     if (this.phase !== "playing") return;
     const alive = [...this.players.values()].filter((p) => p.alive && !p.spectator);
-    if (alive.length <= 1) {
+    if (alive.length === 0 || (alive.length === 1 && !this.snakeSoloRound)) {
       this.finishRound();
       return;
     }
@@ -1281,7 +1293,7 @@ export class LobbyRoom extends DurableObject {
     }
 
     const stillAlive = [...this.players.values()].filter((p) => p.alive && !p.spectator);
-    if (stillAlive.length <= 1) {
+    if (stillAlive.length === 0 || (stillAlive.length === 1 && !this.snakeSoloRound)) {
       this.finishRound();
     } else {
       this.broadcastSnakeState();
@@ -1342,7 +1354,9 @@ export class LobbyRoom extends DurableObject {
     }
     if (this.phase === "playing") {
       const alive = [...this.players.values()].filter((p) => p.alive && !p.spectator);
-      if (alive.length <= 1) this.finishRound();
+      if (alive.length === 0 || (alive.length === 1 && !this.snakeSoloRound)) {
+        this.finishRound();
+      }
     }
   }
 
