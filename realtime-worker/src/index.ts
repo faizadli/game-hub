@@ -1,6 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 
-type GameSlug = "hub" | "snake" | "tetris" | "bomberman" | "flappy";
+type GameSlug = "hub" | "snake" | "tetris" | "bomberman" | "flappy" | "maze";
 type SnakePhase = "lobby" | "playing" | "finished";
 
 type ClientState = {
@@ -82,9 +82,11 @@ type IncomingMessage =
   | { type: "ready"; value: boolean }
   | { type: "tetris_ready"; value: boolean }
   | { type: "bomber_ready"; value: boolean }
+  | { type: "maze_ready"; value: boolean }
   | { type: "direction"; dir: string }
   | { type: "tetris_input"; action: string }
   | { type: "bomber_direction"; dir: string }
+  | { type: "maze_move"; dir: string }
   | { type: "bomber_bomb" };
 
 type BomberPhase = "lobby" | "playing" | "finished";
@@ -112,6 +114,18 @@ type BomberPlayer = {
 type BomberExplosion = { row: number; col: number; ttl: number };
 type BomberPowerup = { row: number; col: number; kind: "range" | "bomb" };
 
+type MazePhase = "lobby" | "memorize" | "racing" | "finished";
+type MazePlayer = {
+  id: string;
+  name: string;
+  ready: boolean;
+  spectator: boolean;
+  finished: boolean;
+  elapsedMs: number;
+  row: number;
+  col: number;
+};
+
 const BOMBER_ROWS = 11;
 const BOMBER_COLS = 13;
 const BOMBER_TICK_MS = 200;
@@ -119,6 +133,9 @@ const BOMBER_BOMB_FUSE_TICKS = 12;
 const BOMBER_EXPLO_TTL = 3;
 const BOMBER_MAX_RANGE = 5;
 const BOMBER_MAX_BOMBS = 3;
+const MAZE_ROWS = 17;
+const MAZE_COLS = 25;
+const MAZE_MEMORIZE_MS = 5500;
 
 const TETRIS_ROWS = 22;
 const TETRIS_COLS = 10;
@@ -363,6 +380,15 @@ export class LobbyRoom extends DurableObject {
   private bomberPowerups: BomberPowerup[] = [];
   private bomberTickTimer: number | null = null;
   private bomberFinishTimeout: number | null = null;
+  private mazePlayers = new Map<string, MazePlayer>();
+  private mazePhase: MazePhase = "lobby";
+  private mazeRound = 0;
+  private mazeWinnerId: string | null = null;
+  private mazeGrid: number[][] = [];
+  private mazeRevealUntilMs: number | null = null;
+  private mazeRaceStartMs: number | null = null;
+  private mazeMemorizeTimeout: number | null = null;
+  private mazeFinishTimeout: number | null = null;
   private phase: SnakePhase = "lobby";
   private round = 0;
   private winnerId: string | null = null;
@@ -418,6 +444,7 @@ export class LobbyRoom extends DurableObject {
     this.broadcastSnakeState();
     this.broadcastTetrisState();
     this.broadcastBomberState();
+    this.broadcastMazeState();
   }
 
   private handleMessage(ws: WebSocket, msg: unknown) {
@@ -448,11 +475,14 @@ export class LobbyRoom extends DurableObject {
       if (screen) screen.name = name;
       const bp = this.bomberPlayers.get(current.id);
       if (bp) bp.name = name;
+      const mp = this.mazePlayers.get(current.id);
+      if (mp) mp.name = name;
       this.send(ws, { type: "name_ack", name, adjusted: name !== requestedName });
       this.broadcastPresence();
       this.broadcastSnakeState();
       this.broadcastTetrisState();
       this.broadcastBomberState();
+      this.broadcastMazeState();
       return;
     }
 
@@ -463,10 +493,12 @@ export class LobbyRoom extends DurableObject {
       this.syncPlayerPresence(c.id);
       this.syncTetrisPresence(c.id);
       this.syncBomberPresence(c.id);
+      this.syncMazePresence(c.id);
       this.broadcastPresence();
       this.broadcastSnakeState();
       this.broadcastTetrisState();
       this.broadcastBomberState();
+      this.broadcastMazeState();
       return;
     }
 
@@ -495,8 +527,18 @@ export class LobbyRoom extends DurableObject {
       return;
     }
 
+    if (data.type === "maze_ready" && typeof data.value === "boolean") {
+      this.setMazeReady(c.id, data.value);
+      return;
+    }
+
     if (data.type === "bomber_direction" && typeof data.dir === "string") {
       this.setBomberDirection(c.id, data.dir);
+      return;
+    }
+
+    if (data.type === "maze_move" && typeof data.dir === "string") {
+      this.setMazeMove(c.id, data.dir);
       return;
     }
 
@@ -550,13 +592,21 @@ export class LobbyRoom extends DurableObject {
         this.tryFinishBomberRound();
       }
     }
+    if (this.mazePlayers.has(c.id)) {
+      this.mazePlayers.delete(c.id);
+      if (this.mazePhase === "racing") {
+        this.tryFinishMazeRoundByState();
+      }
+    }
     this.syncAfterLeave();
     this.syncTetrisAfterLeave();
     this.syncBomberAfterLeave();
+    this.syncMazeAfterLeave();
     this.broadcastPresence();
     this.broadcastSnakeState();
     this.broadcastTetrisState();
     this.broadcastBomberState();
+    this.broadcastMazeState();
   }
 
   private toGame(path: string): GameSlug {
@@ -564,6 +614,7 @@ export class LobbyRoom extends DurableObject {
     if (path.startsWith("/games/tetris")) return "tetris";
     if (path.startsWith("/games/bomberman")) return "bomberman";
     if (path.startsWith("/games/flappy")) return "flappy";
+    if (path.startsWith("/games/maze")) return "maze";
     return "hub";
   }
 
@@ -878,6 +929,7 @@ export class LobbyRoom extends DurableObject {
     this.tetrisScreens.delete(current.id);
     this.tetrisRuntime.delete(current.id);
     this.bomberPlayers.delete(current.id);
+    this.mazePlayers.delete(current.id);
 
     current.id = existingId;
     current.session = session;
@@ -1844,6 +1896,322 @@ export class LobbyRoom extends DurableObject {
     });
   }
 
+  private mazePageUserIds() {
+    const ids = new Set<string>();
+    for (const c of this.clients.values()) {
+      if (c.game === "maze") ids.add(c.id);
+    }
+    return ids;
+  }
+
+  private ensureMazePlayer(id: string, name: string) {
+    if (this.mazePlayers.has(id)) return;
+    this.mazePlayers.set(id, {
+      id,
+      name,
+      ready: false,
+      spectator: false,
+      finished: false,
+      elapsedMs: 0,
+      row: 1,
+      col: 1,
+    });
+  }
+
+  private createMazeGrid(): number[][] {
+    const grid = Array.from({ length: MAZE_ROWS }, () => Array<number>(MAZE_COLS).fill(1));
+    const stack: Cell[] = [{ row: 1, col: 1 }];
+    grid[1][1] = 0;
+    const dirs: Vec[] = [
+      { dr: -2, dc: 0 },
+      { dr: 2, dc: 0 },
+      { dr: 0, dc: -2 },
+      { dr: 0, dc: 2 },
+    ];
+
+    while (stack.length > 0) {
+      const curr = stack[stack.length - 1]!;
+      const options: Cell[] = [];
+      for (const d of dirs) {
+        const nr = curr.row + d.dr;
+        const nc = curr.col + d.dc;
+        if (nr <= 0 || nc <= 0 || nr >= MAZE_ROWS - 1 || nc >= MAZE_COLS - 1) continue;
+        if (grid[nr][nc] === 1) options.push({ row: nr, col: nc });
+      }
+      if (options.length === 0) {
+        stack.pop();
+        continue;
+      }
+      const next = options[Math.floor(Math.random() * options.length)]!;
+      const midR = curr.row + (next.row - curr.row) / 2;
+      const midC = curr.col + (next.col - curr.col) / 2;
+      grid[midR][midC] = 0;
+      grid[next.row][next.col] = 0;
+      stack.push(next);
+    }
+
+    const goal = { row: MAZE_ROWS - 2, col: MAZE_COLS - 2 };
+    grid[goal.row][goal.col] = 0;
+    grid[goal.row][goal.col - 1] = 0;
+    grid[goal.row - 1][goal.col] = 0;
+
+    for (let r = 1; r < MAZE_ROWS - 1; r++) {
+      for (let c = 1; c < MAZE_COLS - 1; c++) {
+        if (grid[r][c] === 1 && Math.random() < 0.06) {
+          grid[r][c] = 0;
+        }
+      }
+    }
+    return grid;
+  }
+
+  private syncMazePresence(id: string) {
+    const onPage = this.mazePageUserIds().has(id);
+    if (!onPage) {
+      const p = this.mazePlayers.get(id);
+      if (!p) return;
+      if (this.mazePhase === "lobby" || this.mazePhase === "finished") {
+        this.mazePlayers.delete(id);
+      } else {
+        p.ready = false;
+        p.spectator = true;
+        if (this.mazePhase === "racing") p.finished = true;
+        if (this.mazePhase === "racing") this.tryFinishMazeRoundByState();
+      }
+      return;
+    }
+    const c = [...this.clients.values()].find((x) => x.id === id);
+    if (!c) return;
+    const existed = this.mazePlayers.has(id);
+    this.ensureMazePlayer(id, c.name);
+    const p = this.mazePlayers.get(id);
+    if (!p) return;
+    p.name = c.name;
+    if (this.mazePhase === "lobby" || this.mazePhase === "finished") {
+      p.spectator = false;
+    } else if (!existed) {
+      p.spectator = true;
+      p.ready = false;
+      p.finished = false;
+      p.elapsedMs = 0;
+    }
+  }
+
+  private syncMazeAfterLeave() {
+    const ids = this.mazePageUserIds();
+    for (const id of [...this.mazePlayers.keys()]) {
+      if (ids.has(id)) continue;
+      const p = this.mazePlayers.get(id);
+      if (!p) continue;
+      if (this.mazePhase === "lobby" || this.mazePhase === "finished") {
+        this.mazePlayers.delete(id);
+      } else {
+        p.ready = false;
+        p.spectator = true;
+        if (this.mazePhase === "racing") p.finished = true;
+      }
+    }
+    if (this.mazePhase === "racing") {
+      this.tryFinishMazeRoundByState();
+    }
+  }
+
+  private setMazeReady(id: string, value: boolean) {
+    if (!this.mazePageUserIds().has(id)) return;
+    const c = [...this.clients.values()].find((x) => x.id === id);
+    if (!c) return;
+    this.ensureMazePlayer(id, c.name);
+    const p = this.mazePlayers.get(id);
+    if (!p) return;
+    if (this.mazePhase === "memorize" || this.mazePhase === "racing") return;
+    if (this.mazePhase === "lobby" || this.mazePhase === "finished") {
+      p.spectator = false;
+    }
+    p.ready = value;
+    this.broadcastMazeState();
+    this.tryStartMazeRound();
+  }
+
+  private tryStartMazeRound() {
+    if (this.mazePhase === "memorize" || this.mazePhase === "racing") return;
+    if (this.mazePhase === "finished") return;
+    const users = this.mazePageUserIds();
+    const active = [...this.mazePlayers.values()].filter((p) => users.has(p.id) && !p.spectator);
+    if (active.length < 1) return;
+    if (!active.every((p) => p.ready)) return;
+    this.startMazeRound(active);
+  }
+
+  private startMazeRound(active: MazePlayer[]) {
+    this.mazePhase = "memorize";
+    this.mazeRound += 1;
+    this.mazeWinnerId = null;
+    this.mazeGrid = this.createMazeGrid();
+    this.mazeRaceStartMs = null;
+    this.mazeRevealUntilMs = Date.now() + MAZE_MEMORIZE_MS;
+    if (this.mazeMemorizeTimeout !== null) {
+      clearTimeout(this.mazeMemorizeTimeout);
+      this.mazeMemorizeTimeout = null;
+    }
+    if (this.mazeFinishTimeout !== null) {
+      clearTimeout(this.mazeFinishTimeout);
+      this.mazeFinishTimeout = null;
+    }
+
+    const users = this.mazePageUserIds();
+    for (const p of this.mazePlayers.values()) {
+      p.ready = false;
+      p.finished = false;
+      p.elapsedMs = 0;
+      p.row = 1;
+      p.col = 1;
+      p.spectator = !(users.has(p.id) && active.some((a) => a.id === p.id));
+    }
+
+    this.broadcastMazeState();
+    this.mazeMemorizeTimeout = setTimeout(() => {
+      this.startMazeRace();
+    }, MAZE_MEMORIZE_MS) as unknown as number;
+  }
+
+  private startMazeRace() {
+    if (this.mazePhase !== "memorize") return;
+    this.mazePhase = "racing";
+    this.mazeRevealUntilMs = null;
+    this.mazeRaceStartMs = Date.now();
+    this.broadcastMazeState();
+  }
+
+  private setMazeMove(id: string, dir: string) {
+    if (this.mazePhase !== "racing") return;
+    const p = this.mazePlayers.get(id);
+    if (!p || p.spectator || p.finished) return;
+    const map: Record<string, Vec> = {
+      up: { dr: -1, dc: 0 },
+      down: { dr: 1, dc: 0 },
+      left: { dr: 0, dc: -1 },
+      right: { dr: 0, dc: 1 },
+      w: { dr: -1, dc: 0 },
+      s: { dr: 1, dc: 0 },
+      a: { dr: 0, dc: -1 },
+      d: { dr: 0, dc: 1 },
+    };
+    const step = map[dir];
+    if (!step) return;
+    const nr = p.row + step.dr;
+    const nc = p.col + step.dc;
+    if (nr < 0 || nc < 0 || nr >= MAZE_ROWS || nc >= MAZE_COLS) return;
+    if (this.mazeGrid[nr]?.[nc] === 1) return;
+
+    p.row = nr;
+    p.col = nc;
+    if (nr === MAZE_ROWS - 2 && nc === MAZE_COLS - 2) {
+      p.finished = true;
+      const base = this.mazeRaceStartMs ?? Date.now();
+      p.elapsedMs = Math.max(0, Date.now() - base);
+      if (!this.mazeWinnerId) {
+        this.mazeWinnerId = p.id;
+        this.finishMazeRound(p.id);
+        return;
+      }
+      this.tryFinishMazeRoundByState();
+    }
+    this.broadcastMazeState();
+  }
+
+  private tryFinishMazeRoundByState() {
+    if (this.mazePhase !== "racing") return;
+    const users = this.mazePageUserIds();
+    const racers = [...this.mazePlayers.values()].filter((p) => users.has(p.id) && !p.spectator);
+    if (racers.length === 0) {
+      this.finishMazeRound(null);
+      return;
+    }
+    if (racers.every((p) => p.finished)) {
+      const sorted = racers.slice().sort((a, b) => a.elapsedMs - b.elapsedMs);
+      this.finishMazeRound(sorted[0]?.id ?? null);
+    }
+  }
+
+  private finishMazeRound(winnerId: string | null) {
+    if (this.mazePhase !== "racing" && this.mazePhase !== "memorize") return;
+    if (this.mazeMemorizeTimeout !== null) {
+      clearTimeout(this.mazeMemorizeTimeout);
+      this.mazeMemorizeTimeout = null;
+    }
+    this.mazePhase = "finished";
+    this.mazeWinnerId = winnerId;
+    this.mazeRevealUntilMs = null;
+    this.mazeRaceStartMs = null;
+    this.broadcastMazeState();
+
+    this.mazeFinishTimeout = setTimeout(() => {
+      const users = this.mazePageUserIds();
+      for (const id of [...this.mazePlayers.keys()]) {
+        const p = this.mazePlayers.get(id);
+        if (!p) continue;
+        p.ready = false;
+        p.finished = false;
+        p.elapsedMs = 0;
+        p.row = 1;
+        p.col = 1;
+        if (users.has(p.id)) {
+          p.spectator = false;
+        } else {
+          this.mazePlayers.delete(p.id);
+        }
+      }
+      this.mazePhase = "lobby";
+      this.mazeWinnerId = null;
+      this.broadcastMazeState();
+    }, 3000) as unknown as number;
+  }
+
+  private broadcastMazeState() {
+    for (const c of this.clients.values()) {
+      if (c.game !== "maze") continue;
+      this.ensureMazePlayer(c.id, c.name);
+      const mp = this.mazePlayers.get(c.id);
+      if (mp && (this.mazePhase === "lobby" || this.mazePhase === "finished")) {
+        mp.spectator = false;
+      }
+    }
+    const users = this.mazePageUserIds();
+    const players = [...this.mazePlayers.values()]
+      .filter((p) => users.has(p.id))
+      .map((p) => ({
+        id: p.id,
+        name: p.name,
+        ready: p.ready,
+        spectator: p.spectator,
+        finished: p.finished,
+        elapsedMs: p.elapsedMs,
+        row: p.row,
+        col: p.col,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    const grid =
+      this.mazeGrid.length > 0
+        ? this.mazeGrid.map((row) => row.map((v) => v as 0 | 1))
+        : Array.from({ length: MAZE_ROWS }, () => Array<0 | 1>(MAZE_COLS).fill(0));
+
+    this.broadcast({
+      type: "maze_state",
+      phase: this.mazePhase,
+      round: this.mazeRound,
+      winnerId: this.mazeWinnerId,
+      rows: MAZE_ROWS,
+      cols: MAZE_COLS,
+      start: { row: 1, col: 1 },
+      goal: { row: MAZE_ROWS - 2, col: MAZE_COLS - 2 },
+      gridVisible: this.mazePhase !== "racing",
+      revealUntilMs: this.mazePhase === "memorize" ? this.mazeRevealUntilMs : null,
+      grid,
+      players,
+    });
+  }
+
   private broadcastPresence() {
     const users = [...this.clients.values()].map((c) => ({
       id: c.id,
@@ -1858,6 +2226,7 @@ export class LobbyRoom extends DurableObject {
       tetris: users.filter((u) => u.game === "tetris").length,
       bomberman: users.filter((u) => u.game === "bomberman").length,
       flappy: users.filter((u) => u.game === "flappy").length,
+      maze: users.filter((u) => u.game === "maze").length,
     };
     this.broadcast({ type: "presence", users, counts });
   }

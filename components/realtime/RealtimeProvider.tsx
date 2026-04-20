@@ -14,6 +14,7 @@ import type {
   BomberRealtimeState,
   GameCounts,
   GameSlug,
+  MazeRealtimeState,
   PresenceUser,
   SnakeRealtimeState,
   TetrisInputAction,
@@ -30,6 +31,7 @@ type RealtimeContextValue = {
   snakeState: SnakeRealtimeState | null;
   tetrisState: TetrisRealtimeState | null;
   bomberState: BomberRealtimeState | null;
+  mazeState: MazeRealtimeState | null;
   sendTetrisReady: (value: boolean) => void;
   sendSnakeReady: (value: boolean) => void;
   sendSnakeDirection: (dir: "up" | "down" | "left" | "right") => void;
@@ -37,6 +39,8 @@ type RealtimeContextValue = {
   sendBomberReady: (value: boolean) => void;
   sendBomberDirection: (dir: "up" | "down" | "left" | "right") => void;
   sendBomberBomb: () => void;
+  sendMazeReady: (value: boolean) => void;
+  sendMazeMove: (dir: "up" | "down" | "left" | "right") => void;
 };
 
 const defaultCounts: GameCounts = {
@@ -46,6 +50,7 @@ const defaultCounts: GameCounts = {
   tetris: 0,
   bomberman: 0,
   flappy: 0,
+  maze: 0,
 };
 
 const Ctx = createContext<RealtimeContextValue | null>(null);
@@ -55,6 +60,7 @@ function toGame(pathname: string): GameSlug {
   if (pathname.startsWith("/games/tetris")) return "tetris";
   if (pathname.startsWith("/games/bomberman")) return "bomberman";
   if (pathname.startsWith("/games/flappy")) return "flappy";
+  if (pathname.startsWith("/games/maze")) return "maze";
   return "hub";
 }
 
@@ -98,6 +104,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const [snakeState, setSnakeState] = useState<SnakeRealtimeState | null>(null);
   const [tetrisState, setTetrisState] = useState<TetrisRealtimeState | null>(null);
   const [bomberState, setBomberState] = useState<BomberRealtimeState | null>(null);
+  const [mazeState, setMazeState] = useState<MazeRealtimeState | null>(null);
 
   const setUsername = useCallback((name: string) => {
     const cleaned = name.trim().slice(0, 24);
@@ -168,6 +175,8 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
           setTetrisState(msg);
         } else if (msg.type === "bomber_state") {
           setBomberState(msg);
+        } else if (msg.type === "maze_state") {
+          setMazeState(msg);
         }
       } catch {
         // ignore malformed payload
@@ -181,6 +190,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
         setSnakeState(null);
         setTetrisState(null);
         setBomberState(null);
+        setMazeState(null);
         setCounts(defaultCounts);
       }, 1200);
     };
@@ -244,6 +254,18 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     ws.send(JSON.stringify({ type: "bomber_bomb" }));
   }, []);
 
+  const sendMazeReady = useCallback((value: boolean) => {
+    const ws = socketRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify({ type: "maze_ready", value }));
+  }, []);
+
+  const sendMazeMove = useCallback((dir: "up" | "down" | "left" | "right") => {
+    const ws = socketRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify({ type: "maze_move", dir }));
+  }, []);
+
   const value = useMemo<RealtimeContextValue>(
     () => ({
       connected,
@@ -255,6 +277,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       snakeState,
       tetrisState,
       bomberState,
+      mazeState,
       sendTetrisReady,
       sendSnakeReady,
       sendSnakeDirection,
@@ -262,6 +285,8 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       sendBomberReady,
       sendBomberDirection,
       sendBomberBomb,
+      sendMazeReady,
+      sendMazeMove,
     }),
     [
       connected,
@@ -273,6 +298,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       snakeState,
       tetrisState,
       bomberState,
+      mazeState,
       sendTetrisReady,
       sendSnakeReady,
       sendSnakeDirection,
@@ -280,6 +306,8 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       sendBomberReady,
       sendBomberDirection,
       sendBomberBomb,
+      sendMazeReady,
+      sendMazeMove,
     ]
   );
 

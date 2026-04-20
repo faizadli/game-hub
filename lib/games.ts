@@ -35,4 +35,11 @@ export const GAMES: GameMeta[] = [
     accent: "#38bdf8",
     icon: "△",
   },
+  {
+    slug: "maze",
+    title: "Invisible Maze Race",
+    description: "Multiplayer race — hafalkan peta, lalu menangi jalur tersembunyi.",
+    accent: "#f59e0b",
+    icon: "▦",
+  },
 ];

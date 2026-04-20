@@ -1,4 +1,4 @@
-export type GameSlug = "hub" | "snake" | "tetris" | "bomberman" | "flappy";
+export type GameSlug = "hub" | "snake" | "tetris" | "bomberman" | "flappy" | "maze";
 export type SnakePhase = "lobby" | "playing" | "finished";
 
 export type PresenceUser = {
@@ -15,6 +15,7 @@ export type GameCounts = {
   tetris: number;
   bomberman: number;
   flappy: number;
+  maze: number;
 };
 
 export type SnakePlayerState = {
@@ -131,4 +132,34 @@ export type BomberRealtimeState = {
   bombs: BomberBombState[];
   explosions: BomberExplosionCell[];
   powerups: BomberPowerupCell[];
+};
+
+export type MazePhase = "lobby" | "memorize" | "racing" | "finished";
+
+/** 0 floor, 1 wall */
+export type MazeCell = 0 | 1;
+
+export type MazePlayerState = {
+  id: string;
+  name: string;
+  ready: boolean;
+  spectator: boolean;
+  finished: boolean;
+  elapsedMs: number;
+  row: number;
+  col: number;
+};
+
+export type MazeRealtimeState = {
+  phase: MazePhase;
+  round: number;
+  winnerId: string | null;
+  rows: number;
+  cols: number;
+  start: { row: number; col: number };
+  goal: { row: number; col: number };
+  gridVisible: boolean;
+  revealUntilMs: number | null;
+  grid: MazeCell[][];
+  players: MazePlayerState[];
 };
