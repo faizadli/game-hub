@@ -27,26 +27,26 @@ export function PrismGameHeader({
   const tetrisShow = tetrisOnlineUsers.slice(0, 2);
 
   return (
-    <header className="fixed top-0 z-50 flex w-full items-center justify-between px-4 py-6 sm:px-8">
+    <header className="fixed top-0 z-50 flex w-full items-center justify-between px-3 py-4 sm:px-8 sm:py-6">
       <Link
         href="/"
-        className="group inline-flex items-center gap-3 rounded-xl glass-panel px-5 py-2.5 transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]"
+        className="group inline-flex items-center gap-2 rounded-xl glass-panel px-3 py-2 transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] sm:gap-3 sm:px-5 sm:py-2.5"
       >
-        <SiteLogo size="sm" className="rounded-lg" />
+        <SiteLogo size="sm" className="h-10 w-10 rounded-lg sm:h-12 sm:w-12" />
         <span className="material-symbols-outlined text-primary transition-transform group-hover:-translate-x-1">
           arrow_back
         </span>
-        <span className="font-headline text-sm font-bold tracking-tight">Back to Home</span>
+        <span className="hidden font-headline text-sm font-bold tracking-tight sm:inline">Back to Home</span>
       </Link>
       <div className="flex items-center gap-2 sm:gap-4">
-        <div className="glass-panel flex shrink-0 items-center gap-2 rounded-xl px-4 py-2">
+        <div className="glass-panel flex shrink-0 items-center gap-1.5 rounded-xl px-2.5 py-1.5 sm:gap-2 sm:px-4 sm:py-2">
           <span
-            className="material-symbols-outlined text-tertiary"
+            className="material-symbols-outlined text-base text-tertiary sm:text-[20px]"
             style={{ fontVariationSettings: "'FILL' 1" }}
           >
             stars
           </span>
-          <span className="text-sm font-bold">{connected ? "Live" : "Offline"}</span>
+          <span className="text-xs font-bold sm:text-sm">{connected ? "Live" : "Offline"}</span>
         </div>
         {variant === "tetris" && tetrisOnlineUsers.length > 0 && (
           <>

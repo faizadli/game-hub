@@ -16,7 +16,7 @@ const VARIANT_BY_SLUG: Record<string, HubVariant> = {
 };
 
 export function GameHub() {
-  const { counts } = useRealtime();
+  const { counts, username, connected } = useRealtime();
 
   const gameCountBySlug: Record<string, number> = {
     snake: counts.snake,
@@ -44,13 +44,23 @@ export function GameHub() {
             <SiteLogo size="lg" priority />
           </Link>
           <div className="min-w-0 flex-1">
-          <h1 className="font-headline text-4xl font-extrabold tracking-[-0.02em] text-on-surface sm:text-5xl md:text-6xl">
-            Game <span className="text-primary italic">Hub</span>
-          </h1>
-          <p className="mt-2 max-w-md font-medium text-on-surface-variant">
-            Jelajahi dunia petualangan dalam satu genggaman. Pilih permainanmu dan mulailah berkompetisi dengan
-            pemain lain secara realtime.
-          </p>
+            <h1 className="font-headline text-4xl font-extrabold tracking-[-0.02em] text-on-surface sm:text-5xl md:text-6xl">
+              Game <span className="text-primary italic">Hub</span>
+            </h1>
+            <p className="mt-2 max-w-md font-medium text-on-surface-variant">
+              Jelajahi dunia petualangan dalam satu genggaman. Pilih permainanmu dan mulailah berkompetisi dengan
+              pemain lain secara realtime.
+            </p>
+            <div className="mt-4 flex flex-wrap items-center gap-2.5">
+              <span className="inline-flex items-center gap-2 rounded-full border border-outline-variant/20 bg-surface-container-low px-3 py-1.5 text-xs font-semibold text-on-surface">
+                <span className={`h-2 w-2 rounded-full ${connected ? "bg-tertiary-container" : "bg-error"}`} />
+                {counts.total} user online
+              </span>
+              <span className="inline-flex items-center gap-2 rounded-full border border-outline-variant/20 bg-surface-container-low px-3 py-1.5 text-xs font-semibold text-on-surface">
+                <span className="material-symbols-outlined text-base text-primary">account_circle</span>
+                {username || "Guest"}
+              </span>
+            </div>
           </div>
         </div>
       </header>
