@@ -53,6 +53,9 @@ const defaultCounts: GameCounts = {
   maze: 0,
 };
 
+const ACTIVITY_KEY = "games_web_last_activity_at";
+const IDLE_TIMEOUT_MS = 60 * 60 * 1000; // 1 hour
+
 const Ctx = createContext<RealtimeContextValue | null>(null);
 
 function toGame(pathname: string): GameSlug {
@@ -87,7 +90,9 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const socketRef = useRef<WebSocket | null>(null);
   const reconnectRef = useRef<number | null>(null);
+  const idleCheckRef = useRef<number | null>(null);
   const helloSentRef = useRef(false);
+  const lastActivityRef = useRef<number>(0);
   const pathnameRef = useRef(pathname);
   useEffect(() => {
     pathnameRef.current = pathname;
@@ -106,10 +111,41 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const [bomberState, setBomberState] = useState<BomberRealtimeState | null>(null);
   const [mazeState, setMazeState] = useState<MazeRealtimeState | null>(null);
 
+  const resetRealtimeState = useCallback(() => {
+    setSelfId(null);
+    setUsers([]);
+    setSnakeState(null);
+    setTetrisState(null);
+    setBomberState(null);
+    setMazeState(null);
+    setCounts(defaultCounts);
+  }, []);
+
+  const markActivity = useCallback((ts = Date.now()) => {
+    lastActivityRef.current = ts;
+    localStorage.setItem(ACTIVITY_KEY, String(ts));
+  }, []);
+
+  const expireIdentity = useCallback(() => {
+    setConnected(false);
+    setUsernameState("");
+    resetRealtimeState();
+    localStorage.removeItem("games_web_username");
+    localStorage.removeItem("games_web_session_key");
+    localStorage.removeItem(ACTIVITY_KEY);
+    const ws = socketRef.current;
+    if (ws) {
+      ws.close();
+      socketRef.current = null;
+    }
+  }, [resetRealtimeState]);
+
   const setUsername = useCallback((name: string) => {
     const cleaned = name.trim().slice(0, 24);
     setUsernameState(cleaned);
     localStorage.setItem("games_web_username", cleaned);
+    if (cleaned) markActivity();
+    else localStorage.removeItem(ACTIVITY_KEY);
     if (socketRef.current?.readyState === WebSocket.OPEN) {
       socketRef.current.send(
         JSON.stringify({
@@ -119,7 +155,62 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
         })
       );
     }
-  }, []);
+  }, [markActivity]);
+
+  useEffect(() => {
+    if (!username) return;
+
+    const now = Date.now();
+    const fromStorage = Number(localStorage.getItem(ACTIVITY_KEY) ?? "0");
+    const initial = Number.isFinite(fromStorage) && fromStorage > 0 ? fromStorage : now;
+    lastActivityRef.current = initial;
+
+    if (now - initial >= IDLE_TIMEOUT_MS) {
+      const expireTimer = window.setTimeout(() => {
+        expireIdentity();
+      }, 0);
+      return () => window.clearTimeout(expireTimer);
+    }
+
+    markActivity(now);
+
+    const onActivity = () => markActivity();
+    const activityEvents: Array<keyof WindowEventMap> = [
+      "pointerdown",
+      "keydown",
+      "touchstart",
+      "mousedown",
+      "scroll",
+    ];
+    for (const ev of activityEvents) {
+      window.addEventListener(ev, onActivity, { passive: true });
+    }
+
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") {
+        onActivity();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+
+    if (idleCheckRef.current) window.clearInterval(idleCheckRef.current);
+    idleCheckRef.current = window.setInterval(() => {
+      if (Date.now() - lastActivityRef.current >= IDLE_TIMEOUT_MS) {
+        expireIdentity();
+      }
+    }, 30000);
+
+    return () => {
+      for (const ev of activityEvents) {
+        window.removeEventListener(ev, onActivity);
+      }
+      document.removeEventListener("visibilitychange", onVisibility);
+      if (idleCheckRef.current) {
+        window.clearInterval(idleCheckRef.current);
+        idleCheckRef.current = null;
+      }
+    };
+  }, [expireIdentity, markActivity, username]);
 
   const sendPage = useCallback(() => {
     const ws = socketRef.current;
@@ -186,12 +277,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       setConnected(false);
       if (reconnectRef.current) window.clearTimeout(reconnectRef.current);
       reconnectRef.current = window.setTimeout(() => {
-        setSelfId(null);
-        setSnakeState(null);
-        setTetrisState(null);
-        setBomberState(null);
-        setMazeState(null);
-        setCounts(defaultCounts);
+        resetRealtimeState();
       }, 1200);
     };
     ws.onerror = () => {
@@ -202,7 +288,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       ws.close();
       socketRef.current = null;
     };
-  }, [username]);
+  }, [resetRealtimeState, username]);
 
   useEffect(() => {
     if (!connected || !helloSentRef.current) return;
