@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { PrismGameHeader } from "@/components/game-ui/PrismGameHeader";
 import { useRealtime } from "@/components/realtime/RealtimeProvider";
 import { MobileDpad } from "@/components/games/MobileDpad";
 import { useMobileGameUi } from "@/lib/hooks/useMobileGameUi";
@@ -8,9 +9,9 @@ import type { SnakePlayerState } from "@/lib/realtime/types";
 
 const CELL = 22;
 const STATUS_H = 44;
-const COLOR_BG = "#0d1322";
-const COLOR_GRID = "#141f34";
-const COLOR_UI = "#d6e2ff";
+const COLOR_BG = "#eef1f3";
+const COLOR_GRID = "#ffffff";
+const COLOR_UI = "#2c2f31";
 const SNAKE_COLORS = [
   "#8fff8f",
   "#5ecf7a",
@@ -92,7 +93,7 @@ export function SnakeGame() {
 
     ctx.fillStyle = COLOR_BG;
     ctx.fillRect(0, 0, width, totalHeight);
-    ctx.fillStyle = "#0a111e";
+    ctx.fillStyle = "#dfe3e6";
     ctx.fillRect(0, height, width, STATUS_H);
     ctx.fillStyle = COLOR_UI;
     ctx.font = "10px Segoe UI";
@@ -107,7 +108,7 @@ export function SnakeGame() {
       for (let c = 0; c < cols; c++) {
         ctx.fillStyle = COLOR_GRID;
         ctx.fillRect(c * CELL, r * CELL, CELL, CELL);
-        ctx.strokeStyle = COLOR_BG;
+        ctx.strokeStyle = "rgba(171,173,175,0.35)";
         ctx.strokeRect(c * CELL, r * CELL, CELL, CELL);
       }
     }
@@ -133,7 +134,7 @@ export function SnakeGame() {
         ctx.fillStyle = i === 0 ? color : `${color}cc`;
         ctx.fillRect(x + pad, y + pad, CELL - pad * 2, CELL - pad * 2);
         if (i === 0) {
-          ctx.strokeStyle = "#ffffff66";
+          ctx.strokeStyle = "rgba(0,0,0,0.2)";
           ctx.strokeRect(x + 1, y + 1, CELL - 2, CELL - 2);
         }
       });
@@ -192,43 +193,35 @@ export function SnakeGame() {
   }, [snakeState, me]);
 
   return (
-    <div className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6">
-      <div className="mb-6 rounded-3xl border border-white/10 bg-[radial-gradient(circle_at_top,#253252_0%,#101524_58%,#0b0d12_100%)] p-6">
-        <p className="text-xs uppercase tracking-[0.22em] text-[#8fa3cb]">Multiplayer Snake</p>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight text-[#eef3ff] sm:text-3xl">
-          Arena real-time tanpa akun
-        </h1>
-        <p className="mt-2 max-w-3xl text-sm text-[#9ca8c2]">
-          Bisa latihan solo (cukup kamu sendiri ready) atau multiplayer: bertahan paling lama dan lihat hasil
-          ronde.
-        </p>
-        {mobileUi && (
-          <p className="mt-2 text-xs text-[#7d8ba8]">
-            Di HP/tablet: gunakan kontrol sentuh di bawah arena saat ronde berjalan (panah). Atau tetap
-            pakai WASD/arrow di keyboard.
-          </p>
-        )}
+    <div className="relative min-h-screen overflow-x-hidden bg-surface text-on-surface">
+      <div className="pointer-events-none fixed inset-0 -z-10">
+        <div className="absolute left-[-10%] top-[-10%] h-[40%] w-[40%] rounded-full bg-primary/5 blur-[120px]" />
+        <div className="absolute bottom-[-10%] right-[-10%] h-[40%] w-[40%] rounded-full bg-secondary/5 blur-[120px]" />
       </div>
 
-      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <section className="rounded-3xl border border-white/10 bg-[#0f1525]/90 p-4 shadow-[0_30px_80px_-50px_rgba(0,0,0,0.95)]">
+      <PrismGameHeader variant="snake" title="Snake" connected={connected} />
+
+      <main className="relative mx-auto flex max-w-[1400px] flex-col items-start justify-center gap-8 px-4 pb-12 pt-28 lg:flex-row lg:px-8">
+        <section className="glass-panel relative w-full max-w-[800px] flex-1 overflow-hidden rounded-[2rem] p-4 shadow-luxe sm:p-8 lg:min-h-[min(700px,85vh)]">
           <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
-            <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[#cbd8f7]">
+            <span className="rounded-full border border-outline-variant/15 bg-surface-container-low px-2.5 py-1 text-on-surface-variant">
               Round {snakeState?.round ?? 0}
             </span>
-            <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[#cbd8f7]">
+            <span className="rounded-full border border-outline-variant/15 bg-surface-container-low px-2.5 py-1 text-on-surface-variant">
               Fase {snakeState?.phase ?? "lobby"}
             </span>
-            <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[#cbd8f7]">
+            <span className="rounded-full border border-outline-variant/15 bg-surface-container-low px-2.5 py-1 text-on-surface-variant">
               {onlineCount} online
             </span>
           </div>
-          <canvas
-            ref={canvasRef}
-            width={width}
-            height={totalHeight}
-            className="w-full max-w-full rounded-2xl border border-white/10 bg-[#0b1120]"
-          />
+          <div className="snake-grid relative overflow-hidden rounded-xl border border-outline-variant/20 bg-surface-container-low">
+            <canvas
+              ref={canvasRef}
+              width={width}
+              height={totalHeight}
+              className="block h-auto w-full max-w-full bg-transparent"
+            />
+          </div>
           {mobileUi && snakeState?.phase === "playing" && (
             <MobileDpad
               className="mt-4"
@@ -238,29 +231,38 @@ export function SnakeGame() {
           )}
         </section>
 
-        <aside className="space-y-4">
-          <div className="rounded-2xl border border-white/10 bg-[#11192c] p-4">
-            <h2 className="text-sm font-semibold text-[#e9ecf4]">Status Match</h2>
-            <p className="mt-2 text-sm text-[#9db0d0]">
+        <aside className="w-full space-y-6 lg:w-[380px]">
+          <div className="glass-panel relative overflow-hidden rounded-[2rem] p-6 shadow-luxe sm:p-8">
+            <div className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-secondary/5 blur-2xl" />
+            <h2 className="mb-6 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-on-surface-variant">
+              <span className="h-4 w-1 rounded-full bg-secondary" />
+              Match Status
+            </h2>
+            <p className="mt-2 text-sm text-on-surface-variant">
               Realtime:{" "}
-              <span className={connected ? "text-[#67e8a1]" : "text-[#fb7185]"}>
+              <span className={connected ? "font-semibold text-tertiary" : "font-semibold text-error"}>
                 {connected ? "terhubung" : "terputus"}
               </span>
             </p>
             {snakeState?.phase === "lobby" && (
-              <p className="mt-1 text-sm text-[#9db0d0]">
-                Menunggu ready: <span className="text-[#e9ecf4]">{waitingReadyCount}</span>
+              <p className="mt-1 text-sm text-on-surface-variant">
+                Menunggu ready: <span className="font-semibold text-on-surface">{waitingReadyCount}</span>
               </p>
             )}
             {snakeState?.phase === "playing" && (
-              <p className="mt-1 text-sm text-[#9db0d0]">Ronde sedang berlangsung.</p>
+              <p className="mt-1 text-sm text-on-surface-variant">Ronde sedang berlangsung.</p>
             )}
             {snakeState?.phase === "finished" && (
-              <p className="mt-1 text-sm text-[#9db0d0]">Ronde selesai.</p>
+              <p className="mt-1 text-sm text-on-surface-variant">Ronde selesai.</p>
             )}
             {me?.spectator && snakeState?.phase === "playing" && (
-              <p className="mt-2 text-xs text-[#ffdc78]">
+              <p className="mt-2 text-xs text-secondary">
                 Kamu join saat ronde berjalan, jadi spectate dulu sampai ronde selesai.
+              </p>
+            )}
+            {mobileUi && (
+              <p className="mt-3 text-xs text-on-surface-variant">
+                Di HP: kontrol sentuh di bawah arena. Keyboard WASD / panah tetap didukung.
               </p>
             )}
             <div className="mt-4">
@@ -268,15 +270,15 @@ export function SnakeGame() {
                 type="button"
                 disabled={snakeState?.phase === "playing"}
                 onClick={() => sendSnakeReady(!(me?.ready ?? false))}
-                className="w-full rounded-xl bg-[#2f6df4] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#3f7df8] disabled:cursor-not-allowed disabled:opacity-50"
+                className="w-full rounded-2xl px-4 py-3 text-sm font-bold text-white gradient-primary transition-shadow hover:shadow-[0_0_20px_rgba(70,71,211,0.25)] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {me?.ready ? "Batal Ready" : "Ready untuk ronde berikutnya"}
               </button>
             </div>
           </div>
 
-          <div className="rounded-2xl border border-white/10 bg-[#11192c] p-4">
-            <h2 className="text-sm font-semibold text-[#e9ecf4]">Pemain di room</h2>
+          <div className="glass-panel rounded-[2rem] p-6 shadow-luxe">
+            <h2 className="text-sm font-bold text-on-surface">Pemain di room</h2>
             <ul className="mt-3 space-y-2">
               {(snakeState?.players ?? []).map((p: SnakePlayerState) => {
                 const isOnline = users.some((u) => u.id === p.id);
@@ -290,10 +292,10 @@ export function SnakeGame() {
                 return (
                   <li
                     key={p.id}
-                    className="flex items-center justify-between gap-2 rounded-lg border border-white/5 bg-white/[0.03] px-2.5 py-2 text-xs text-[#aeb8d0]"
+                    className="flex items-center justify-between gap-2 rounded-2xl border border-outline-variant/10 bg-surface-container-low px-2.5 py-2 text-xs text-on-surface-variant"
                   >
                     <div className="min-w-0">
-                      <p className="truncate font-medium text-[#e8ecff]">
+                      <p className="truncate font-medium text-on-surface">
                         <span
                           className="mr-2 inline-block h-2.5 w-2.5 rounded-full align-middle"
                           style={{ backgroundColor: playerColor(p.id) }}
@@ -302,9 +304,9 @@ export function SnakeGame() {
                         {p.id === selfId ? " (kamu)" : ""}
                         {!isOnline ? " (offline)" : ""}
                       </p>
-                      <p className="mt-0.5 text-[#8593b1]">{stateText}</p>
+                      <p className="mt-0.5 text-on-surface-variant/80">{stateText}</p>
                     </div>
-                    <span className="rounded-md border border-white/10 px-2 py-1 text-[11px] text-[#d4ddf6]">
+                    <span className="rounded-lg border border-outline-variant/15 bg-surface-container-lowest px-2 py-1 text-[11px] text-on-surface">
                       {p.score} pts
                     </span>
                   </li>
@@ -313,17 +315,17 @@ export function SnakeGame() {
             </ul>
           </div>
         </aside>
-      </div>
+      </main>
 
       {(showEliminatedPopup || showFinishedPopup) && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-[#05070d]/75 px-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl border border-white/15 bg-[#101728] p-5 shadow-[0_30px_80px_-40px_rgba(0,0,0,1)]">
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-on-surface/25 px-4 backdrop-blur-sm">
+          <div className="glass-panel w-full max-w-md rounded-3xl p-6 shadow-luxe">
             {showFinishedPopup ? (
               <>
-                <h3 className="text-lg font-semibold text-[#eef3ff]">
+                <h3 className="font-headline text-lg font-bold text-on-surface">
                   {finishedResult?.didIWin ? "Kamu menang!" : "Round selesai"}
                 </h3>
-                <p className="mt-2 text-sm text-[#a8b5d3]">
+                <p className="mt-2 text-sm text-on-surface-variant">
                   {finishedResult?.winnerName
                     ? `Pemenang ronde: ${finishedResult.winnerName}`
                     : "Tidak ada pemenang ronde ini."}
@@ -331,21 +333,21 @@ export function SnakeGame() {
                 <button
                   type="button"
                   onClick={() => setShowFinishedPopup(false)}
-                  className="mt-5 w-full rounded-xl bg-[#2f6df4] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#3f7df8]"
+                  className="mt-5 w-full rounded-2xl px-4 py-3 text-sm font-bold text-white gradient-primary"
                 >
                   Close
                 </button>
               </>
             ) : (
               <>
-                <h3 className="text-lg font-semibold text-[#ffe2a6]">Kamu keluar ronde ini</h3>
-                <p className="mt-2 text-sm text-[#a8b5d3]">
+                <h3 className="font-headline text-lg font-bold text-secondary">Kamu keluar ronde ini</h3>
+                <p className="mt-2 text-sm text-on-surface-variant">
                   Snake kamu tereliminasi. Kamu bisa spectate dulu sambil menunggu ronde selesai.
                 </p>
                 <button
                   type="button"
                   onClick={() => setShowEliminatedPopup(false)}
-                  className="mt-5 w-full rounded-xl bg-[#2f6df4] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#3f7df8]"
+                  className="mt-5 w-full rounded-2xl px-4 py-3 text-sm font-bold text-white gradient-primary"
                 >
                   Close
                 </button>

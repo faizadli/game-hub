@@ -18,14 +18,21 @@ export function useKeyboardState({
   useEffect(() => {
     if (!active) return;
 
+    const normalizeKey = (event: KeyboardEvent): string => {
+      if (event.code === "Space" || event.key === " " || event.key === "Space") {
+        return " ";
+      }
+      return event.key.toLowerCase();
+    };
+
     const handleDown = (event: KeyboardEvent) => {
-      const key = event.key.toLowerCase();
+      const key = normalizeKey(event);
       keysRef.current[key] = true;
       onKeyDown?.(key, event);
     };
 
     const handleUp = (event: KeyboardEvent) => {
-      const key = event.key.toLowerCase();
+      const key = normalizeKey(event);
       keysRef.current[key] = false;
       onKeyUp?.(key, event);
     };

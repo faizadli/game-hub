@@ -1,14 +1,19 @@
 "use client";
 
 import { GAMES } from "@/lib/games";
-import { GameCard } from "./GameCard";
+import { GameCard, type HubVariant } from "./GameCard";
 import { useRealtime } from "./realtime/RealtimeProvider";
 
+const VARIANT_BY_SLUG: Record<string, HubVariant> = {
+  snake: "featured",
+  tetris: "side",
+  bomberman: "media",
+  flappy: "flappy",
+  maze: "maze",
+};
+
 export function GameHub() {
-  const { users, counts, connected, username } = useRealtime();
-  const onlineNames = users.map((u) => u.name).filter(Boolean).slice(0, 10);
-  const maxUsersText =
-    users.length > onlineNames.length ? `, +${users.length - onlineNames.length} lainnya` : "";
+  const { counts } = useRealtime();
 
   const gameCountBySlug: Record<string, number> = {
     snake: counts.snake,
@@ -19,66 +24,55 @@ export function GameHub() {
   };
 
   return (
-    <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col px-5 py-10 sm:px-8">
-      <header className="relative overflow-hidden rounded-3xl border border-white/10 bg-[radial-gradient(circle_at_top,#253252_0%,#101524_58%,#0b0d12_100%)] p-7 shadow-[0_35px_80px_-50px_rgba(0,0,0,0.95)]">
-        <div className="pointer-events-none absolute -top-14 right-8 h-36 w-36 rounded-full bg-[#3d7dd9]/20 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-12 left-10 h-28 w-28 rounded-full bg-[#7fffd4]/10 blur-3xl" />
+    <main className="relative mx-auto min-h-screen max-w-7xl overflow-hidden px-5 py-8 md:px-16 md:py-12">
+      <div className="pointer-events-none absolute right-0 top-0 h-[600px] w-[600px] light-leak" aria-hidden />
+      <div
+        className="pointer-events-none absolute bottom-0 left-0 h-[400px] w-[400px] opacity-50 light-leak"
+        aria-hidden
+      />
 
-        <p className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs text-[#aab6d1]">
-          <span
-            className={`inline-block h-2 w-2 rounded-full ${connected ? "bg-emerald-400" : "bg-rose-400"}`}
-            aria-hidden
-          />
-          {connected ? "Realtime aktif" : "Realtime terputus"}
-        </p>
-        <h1 className="mt-4 text-3xl font-semibold tracking-tight text-[#eff3ff] sm:text-4xl">
-          Game Hub
-        </h1>
-        <p className="mt-2 max-w-2xl text-sm leading-relaxed text-[#a8b1c7] sm:text-[15px]">
-          Koleksi mini-game browser dengan nuansa arcade modern. Pilih game, lihat
-          siapa yang online, lalu langsung main.
-        </p>
-
-        <div className="mt-6 grid gap-3 sm:grid-cols-3">
-          <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
-            <p className="text-xs text-[#97a4c2]">Nama kamu</p>
-            <p className="mt-1 truncate text-sm font-medium text-[#e9ecf4]">{username}</p>
-          </div>
-          <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
-            <p className="text-xs text-[#97a4c2]">Total online</p>
-            <p className="mt-1 text-sm font-medium text-[#e9ecf4]">{counts.total} user</p>
-          </div>
-          <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
-            <p className="text-xs text-[#97a4c2]">Sedang di Snake</p>
-            <p className="mt-1 text-sm font-medium text-[#e9ecf4]">{counts.snake} user</p>
-          </div>
-        </div>
-
-        <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-xs text-[#9ba8c7]">
-          <span className="text-[#e0e7fb]">User online:</span>{" "}
-          {onlineNames.length > 0 ? `${onlineNames.join(", ")}${maxUsersText}` : "-"}
+      <header className="relative z-10 mb-12 md:mb-16">
+        <div className="max-w-2xl">
+          <h1 className="font-headline text-4xl font-extrabold tracking-[-0.02em] text-on-surface sm:text-5xl md:text-6xl">
+            Game <span className="text-primary italic">Hub</span>
+          </h1>
+          <p className="mt-2 max-w-md font-medium text-on-surface-variant">
+            Jelajahi dunia petualangan dalam satu genggaman. Pilih permainanmu dan mulailah berkompetisi dengan
+            pemain lain secara realtime.
+          </p>
         </div>
       </header>
 
-      <div className="mt-8 flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-[#e9ecf4]">Pilih game</h2>
-        <span className="text-xs text-[#8f96ac]">{GAMES.length} game tersedia</span>
-      </div>
-
-      <ul className="mt-4 grid gap-4 sm:grid-cols-2">
+      <section className="relative z-10 grid grid-cols-1 gap-8 md:grid-cols-12">
         {GAMES.map((g) => (
-          <li key={g.slug} className="min-h-[176px]">
-            <GameCard
-              href={`/games/${g.slug}`}
-              title={g.title}
-              description={g.description}
-              accent={g.accent}
-              icon={g.icon}
-              playingCount={gameCountBySlug[g.slug] ?? 0}
-            />
-          </li>
+          <GameCard
+            key={g.slug}
+            href={`/games/${g.slug}`}
+            hubTitle={g.hubTitle}
+            hubDescription={g.hubDescription}
+            playingCount={gameCountBySlug[g.slug] ?? 0}
+            variant={VARIANT_BY_SLUG[g.slug] ?? "media"}
+            coverImage={g.coverImage}
+          />
         ))}
-      </ul>
-    </div>
+      </section>
+
+      <footer className="mx-auto mt-16 flex max-w-7xl flex-col items-center justify-between gap-6 border-t border-outline-variant/10 py-12 md:flex-row">
+        <p className="text-xs font-medium uppercase tracking-widest text-on-surface-variant">
+          © {new Date().getFullYear()} Luminous Gallery Game Hub. Crafted for play.
+        </p>
+        <div className="flex flex-wrap justify-center gap-6 md:gap-8">
+          <span className="cursor-default text-xs font-medium uppercase tracking-widest text-on-surface-variant opacity-70">
+            Kebijakan Privasi
+          </span>
+          <span className="cursor-default text-xs font-medium uppercase tracking-widest text-on-surface-variant opacity-70">
+            Ketentuan Layanan
+          </span>
+          <span className="cursor-default text-xs font-medium uppercase tracking-widest text-on-surface-variant opacity-70">
+            Bantuan
+          </span>
+        </div>
+      </footer>
+    </main>
   );
 }

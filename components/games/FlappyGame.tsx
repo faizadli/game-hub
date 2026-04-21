@@ -1,7 +1,12 @@
 "use client";
 
+import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { PrismGameHeader } from "@/components/game-ui/PrismGameHeader";
 import { useRealtime } from "@/components/realtime/RealtimeProvider";
+
+const FLAPPY_SKY_IMAGE =
+  "https://lh3.googleusercontent.com/aida-public/AB6AXuCStTTqYLtEN4HJefiGqijEmbetGuoNooLVhhj7fOVWziU4vZIbF_Brw7WvdD_K9US3Ojr1SR0CgN0AKe6tapctDi2kOnncjt0ViUO4O-6fZaud3LPVwAuQh1JGp07cxaiBQlo0KbphL5Hhn9Xb7l99OkhdI4Glto7fUiXf9U0ZHhCt9pTcQexcrWgozD1iUtbiIqJnVg6kQtpjd83OvL_us23hnNjEIdx9x8hgWJdmfCLxs81VUm1maDV-dVuI8mFpibmYI4SDfDc";
 
 const W = 400;
 const H = 560;
@@ -114,24 +119,19 @@ export function FlappyGame() {
 
   const drawFrame = useCallback(
     (ctx: CanvasRenderingContext2D, s: Sim) => {
-      const sky = ctx.createLinearGradient(0, 0, 0, PLAY_H);
-      sky.addColorStop(0, "#4fc3f7");
-      sky.addColorStop(0.55, "#81d4fa");
-      sky.addColorStop(1, "#b3e5fc");
-      ctx.fillStyle = sky;
-      ctx.fillRect(0, 0, W, PLAY_H);
+      ctx.clearRect(0, 0, W, PLAY_H);
 
       for (const p of s.pipes) {
-        ctx.fillStyle = "#2e7d32";
+        ctx.fillStyle = "rgba(255,255,255,0.42)";
         ctx.fillRect(p.x, 0, PIPE_W, p.gapY);
         ctx.fillRect(p.x, p.gapY + GAP_H, PIPE_W, PLAY_H - (p.gapY + GAP_H));
-        ctx.strokeStyle = "#1b5e20";
-        ctx.lineWidth = 3;
+        ctx.strokeStyle = "rgba(255,255,255,0.55)";
+        ctx.lineWidth = 2;
         ctx.strokeRect(p.x + 1, 1, PIPE_W - 2, p.gapY - 2);
         ctx.strokeRect(p.x + 1, p.gapY + GAP_H + 1, PIPE_W - 2, PLAY_H - (p.gapY + GAP_H) - 2);
-        ctx.fillStyle = "#66bb6a";
-        ctx.fillRect(p.x + 4, p.gapY - 24, PIPE_W - 8, 22);
-        ctx.fillRect(p.x + 4, p.gapY + GAP_H + 2, PIPE_W - 8, 22);
+        ctx.fillStyle = "rgba(0, 103, 92, 0.35)";
+        ctx.fillRect(p.x + 4, p.gapY - 20, PIPE_W - 8, 18);
+        ctx.fillRect(p.x + 4, p.gapY + GAP_H + 2, PIPE_W - 8, 18);
       }
 
       const bx = BIRD_X;
@@ -161,17 +161,6 @@ export function FlappyGame() {
         ctx.fillRect(i, PLAY_H + 18 + (i % 3) * 4, 10, 8);
       }
 
-      ctx.fillStyle = "rgba(0,0,0,0.55)";
-      ctx.fillRect(0, 10, W, 44);
-      ctx.fillStyle = "#fff";
-      ctx.font = "700 22px system-ui";
-      ctx.textAlign = "left";
-      ctx.fillText(String(s.score), 16, 38);
-
-      ctx.fillStyle = "rgba(255,255,255,0.85)";
-      ctx.font = "12px system-ui";
-      ctx.fillText(`Flappy · ${counts.flappy} online`, W - 160, 26);
-
       if (s.phase === "idle") {
         ctx.fillStyle = "rgba(0,20,40,0.5)";
         ctx.fillRect(0, 0, W, H);
@@ -197,7 +186,7 @@ export function FlappyGame() {
         ctx.fillText("Tap untuk main lagi", W / 2, H / 2 + 52);
       }
     },
-    [best, counts.flappy]
+    [best]
   );
 
   const resetSim = (startPlaying: boolean) => {
@@ -302,25 +291,20 @@ export function FlappyGame() {
     return () => window.removeEventListener("keydown", onKey);
   }, [onFlap]);
 
+  const flappyOnline = users.filter((u) => u.game === "flappy").length;
+
   return (
-    <div className="mx-auto w-full max-w-2xl px-4 py-8 sm:px-6">
-      <div className="rounded-3xl border border-white/10 bg-[radial-gradient(circle_at_top,#1e3a5f_0%,#0f1528_55%,#0b0d12_100%)] p-6">
-        <p className="text-xs uppercase tracking-[0.2em] text-[#7ea3d4]">Arcade</p>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight text-[#eef3ff] sm:text-3xl">
-          Flappy Bird
-        </h1>
-        <p className="mt-2 text-sm text-[#9cb0d4]">
-          Hindari pipa dan pecahkan rekor lokal. Pakai Spasi, klik, atau sentuh area permainan.
-        </p>
-        <p className="mt-2 text-xs text-[#6a7fa0]">
-          Realtime {connected ? "aktif" : "offline"} · di halaman Flappy:{" "}
-          {users.filter((u) => u.game === "flappy").length} user
-        </p>
+    <div className="relative min-h-screen overflow-hidden bg-surface text-on-surface">
+      <div className="pointer-events-none fixed inset-0 -z-10">
+        <div className="absolute -right-[10%] top-[-10%] h-[500px] w-[500px] rounded-full bg-primary/5 blur-[120px]" />
+        <div className="absolute -left-[5%] bottom-[-5%] h-[400px] w-[400px] rounded-full bg-secondary/5 blur-[100px]" />
       </div>
 
-      <div className="mt-6">
+      <PrismGameHeader variant="flappy" title="Flappy Bird" />
+
+      <main className="relative flex min-h-screen flex-col items-center justify-center px-4 pb-16 pt-24">
         <div
-          className="relative mx-auto max-w-[400px] touch-manipulation select-none overflow-hidden rounded-2xl border border-white/10 shadow-[0_24px_80px_-40px_rgba(0,0,0,0.9)]"
+          className="group relative w-full max-w-[380px] touch-manipulation select-none overflow-hidden rounded-[2.5rem] shadow-luxe"
           role="application"
           aria-label="Permainan Flappy Bird"
           tabIndex={0}
@@ -329,13 +313,66 @@ export function FlappyGame() {
             onFlap();
           }}
         >
-          <canvas ref={canvasRef} width={W} height={H} className="block h-auto w-full max-w-[400px] bg-[#81d4fa]" />
+          <div className="absolute inset-0 z-0">
+            <Image
+              src={FLAPPY_SKY_IMAGE}
+              alt=""
+              fill
+              className="object-cover opacity-60 mix-blend-soft-light"
+              sizes="380px"
+              priority
+            />
+            <div className="absolute inset-0 bg-gradient-to-b from-primary-container/10 via-transparent to-background/40" />
+          </div>
+
+          <div className="absolute inset-x-0 top-8 z-20 flex justify-center gap-4 px-6">
+            <div className="glass-panel flex flex-1 flex-col items-center rounded-2xl px-6 py-3">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/70">
+                Score
+              </span>
+              <span className="font-headline text-3xl font-black text-primary">{displayScore}</span>
+            </div>
+            <div className="glass-panel flex flex-1 flex-col items-center rounded-2xl px-6 py-3">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/70">
+                Best
+              </span>
+              <span className="font-headline text-3xl font-black text-secondary">{best}</span>
+            </div>
+          </div>
+
+          <canvas
+            ref={canvasRef}
+            width={W}
+            height={H}
+            className="relative z-10 block h-auto w-full max-w-[380px] bg-transparent"
+          />
+
+          <div className="pointer-events-none absolute bottom-12 inset-x-0 z-20 flex flex-col items-center gap-3">
+            <div className="flex h-12 w-12 animate-pulse items-center justify-center rounded-full bg-white/40">
+              <span className="material-symbols-outlined text-primary">touch_app</span>
+            </div>
+            <p className="text-sm font-medium text-on-surface-variant/80">Tap to Jump</p>
+          </div>
+
+          <div className="absolute bottom-0 z-10 h-px w-full bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
         </div>
-        <p className="mt-3 text-center text-xs text-[#6f7f9a]">
-          Skor: <span className="font-semibold text-[#dbe7ff]">{displayScore}</span> · Terbaik:{" "}
-          <span className="font-semibold text-[#dbe7ff]">{best}</span>
+
+        <p className="mt-8 text-center text-xs text-on-surface-variant">
+          Realtime {connected ? "aktif" : "offline"} · {flappyOnline} user di halaman Flappy
         </p>
-      </div>
+
+        <div className="mt-10 flex flex-wrap items-center justify-center gap-8 text-on-surface-variant sm:gap-12">
+          <div className="flex flex-col items-center">
+            <span className="font-headline text-2xl font-bold text-on-surface">{flappyOnline}</span>
+            <span className="text-xs font-semibold uppercase tracking-widest opacity-60">Online</span>
+          </div>
+          <div className="h-8 w-px bg-outline-variant/30" />
+          <div className="flex flex-col items-center">
+            <span className="font-headline text-2xl font-bold text-on-surface">{best}</span>
+            <span className="text-xs font-semibold uppercase tracking-widest opacity-60">Best local</span>
+          </div>
+        </div>
+      </main>
     </div>
   );
 }

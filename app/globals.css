@@ -1,22 +1,126 @@
 @import "tailwindcss";
 
 :root {
-  --background: #0b0d12;
-  --foreground: #e9ecf4;
+  --background: #f5f7f9;
+  --foreground: #2c2f31;
+  --surface: #f5f7f9;
+  --surface-container-low: #eef1f3;
+  --surface-container-lowest: #ffffff;
+  --surface-container-high: #dfe3e6;
+  --on-surface-variant: #595c5e;
+  --primary: #4647d3;
+  --primary-container: #9396ff;
+  --secondary: #8126cf;
+  --secondary-container: #e5c6ff;
+  --tertiary-container: #65fde6;
+  --inverse-surface: #0b0f10;
+  --outline-variant: #abadaf;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-on-surface: var(--foreground);
+  --color-surface: var(--surface);
+  --color-surface-container-low: var(--surface-container-low);
+  --color-surface-container-lowest: var(--surface-container-lowest);
+  --color-surface-container-high: var(--surface-container-high);
+  --color-on-surface: var(--foreground);
+  --color-on-surface-variant: var(--on-surface-variant);
+  --color-primary: var(--primary);
+  --color-primary-container: var(--primary-container);
+  --color-secondary: var(--secondary);
+  --color-secondary-container: var(--secondary-container);
+  --color-tertiary: #00675c;
+  --color-tertiary-container: var(--tertiary-container);
+  --color-inverse-surface: var(--inverse-surface);
+  --color-outline-variant: var(--outline-variant);
+  --color-error: #b41340;
+  --color-on-surface-variant: #595c5e;
+  --font-sans: var(--font-body);
+  --font-headline: var(--font-headline);
+}
+
+@layer utilities {
+  .glass-panel {
+    background: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(217, 221, 224, 0.4);
+  }
+
+  .glass-definition {
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    background: rgba(255, 255, 255, 0.7);
+  }
+
+  .snake-grid {
+    background-image:
+      linear-gradient(to right, rgba(171, 173, 175, 0.12) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(171, 173, 175, 0.12) 1px, transparent 1px);
+    background-size: 20px 20px;
+  }
+
+  .tetris-grid-bg {
+    background-image:
+      linear-gradient(to right, rgba(171, 173, 175, 0.12) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(171, 173, 175, 0.12) 1px, transparent 1px);
+    background-size: 30px 30px;
+  }
+
+  /* Matches stitch tetris_multiplayer mockup (subtle grid on white board) */
+  .tetris-grid {
+    background-image:
+      linear-gradient(to right, rgba(171, 173, 175, 0.1) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(171, 173, 175, 0.1) 1px, transparent 1px);
+    background-size: 30px 30px;
+  }
+
+  .maze-grid-bg {
+    background-image: radial-gradient(circle at 2px 2px, rgba(70, 71, 211, 0.06) 1px, transparent 0);
+    background-size: 40px 40px;
+  }
+
+  .material-symbols-outlined {
+    font-family: "Material Symbols Outlined", sans-serif;
+    font-weight: normal;
+    font-style: normal;
+    font-size: 1.25rem;
+    line-height: 1;
+    display: inline-block;
+    vertical-align: middle;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .shadow-luxe {
+    box-shadow: 0px 24px 48px rgba(44, 47, 49, 0.06);
+  }
+
+  .shadow-luxe-hover {
+    box-shadow: 0px 24px 48px rgba(44, 47, 49, 0.12);
+  }
+
+  .gradient-primary {
+    background: linear-gradient(135deg, #4647d3 0%, #9396ff 100%);
+  }
+
+  .light-leak {
+    background: radial-gradient(
+      circle at 50% 50%,
+      rgba(129, 38, 207, 0.08) 0%,
+      transparent 70%
+    );
+  }
+
+  .font-headline {
+    font-family: var(--font-headline), ui-sans-serif, system-ui, sans-serif;
+  }
 }
 
 body {
-  background:
-    radial-gradient(circle at 10% 0%, rgba(67, 97, 176, 0.2), transparent 34%),
-    radial-gradient(circle at 90% 100%, rgba(72, 184, 193, 0.12), transparent 26%),
-    var(--background);
+  background-color: var(--background);
   color: var(--foreground);
   min-height: 100vh;
+  font-family: var(--font-body), ui-sans-serif, system-ui, sans-serif;
 }

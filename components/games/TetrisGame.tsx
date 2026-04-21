@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { PrismGameHeader } from "@/components/game-ui/PrismGameHeader";
 import { MobileTetrisControls } from "@/components/games/MobileTetrisControls";
 import { useKeyboardState } from "@/lib/game/useKeyboardState";
 import { useRealtime } from "@/components/realtime/RealtimeProvider";
@@ -10,10 +11,8 @@ import type { TetrisBoard, TetrisPlayerScreen } from "@/lib/realtime/types";
 const COLS = 10;
 const ROWS = 22;
 const CELL = 28;
-const PANEL_W = 160;
-const CW = COLS * CELL + PANEL_W;
-const CH = (ROWS - 2) * CELL;
-const SIDEBAR_X = COLS * CELL + 12;
+const BOARD_W = COLS * CELL;
+const BOARD_H = (ROWS - 2) * CELL;
 const COLORS: Record<string, string> = {
   I: "#00f0f0",
   O: "#f0f000",
@@ -24,6 +23,105 @@ const COLORS: Record<string, string> = {
   L: "#f0a000",
 };
 
+/** Relative cell positions for next-piece preview (spawn orientation). */
+const PREVIEW_BLOCKS: Record<string, { r: number; c: number }[]> = {
+  I: [
+    [0, 0],
+    [0, 1],
+    [0, 2],
+    [0, 3],
+  ].map(([r, c]) => ({ r, c })),
+  O: [
+    [0, 0],
+    [0, 1],
+    [1, 0],
+    [1, 1],
+  ].map(([r, c]) => ({ r, c })),
+  T: [
+    [0, 1],
+    [1, 0],
+    [1, 1],
+    [1, 2],
+  ].map(([r, c]) => ({ r, c })),
+  S: [
+    [0, 1],
+    [0, 2],
+    [1, 0],
+    [1, 1],
+  ].map(([r, c]) => ({ r, c })),
+  Z: [
+    [0, 0],
+    [0, 1],
+    [1, 1],
+    [1, 2],
+  ].map(([r, c]) => ({ r, c })),
+  J: [
+    [0, 0],
+    [1, 0],
+    [1, 1],
+    [1, 2],
+  ].map(([r, c]) => ({ r, c })),
+  L: [
+    [0, 2],
+    [1, 0],
+    [1, 1],
+    [1, 2],
+  ].map(([r, c]) => ({ r, c })),
+};
+
+function formatScore(n: number): string {
+  const s = String(Math.max(0, Math.floor(n))).padStart(6, "0");
+  return s.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+
+function NextPiecePreview({ piece }: { piece: string | null | undefined }) {
+  const key = (piece?.trim() ?? "").charAt(0).toUpperCase();
+  const blocks = PREVIEW_BLOCKS[key];
+  if (!blocks?.length) {
+    return (
+      <div className="flex h-24 items-center justify-center">
+        <span className="font-headline text-2xl font-black text-on-surface-variant">—</span>
+      </div>
+    );
+  }
+  const rows = 4;
+  const cols = 4;
+  const minR = Math.min(...blocks.map((b) => b.r));
+  const minC = Math.min(...blocks.map((b) => b.c));
+  const grid = Array.from({ length: rows }, () => Array<boolean>(cols).fill(false));
+  for (const b of blocks) {
+    const r = b.r - minR;
+    const c = b.c - minC;
+    if (r >= 0 && r < rows && c >= 0 && c < cols) grid[r][c] = true;
+  }
+  const color = COLORS[key] ?? "#666";
+  return (
+    <div className="flex h-24 items-center justify-center">
+      <div
+        className="grid gap-1"
+        style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
+      >
+        {grid.flatMap((row, r) =>
+          row.map((on, c) => (
+            <div
+              key={`${r}-${c}`}
+              className="h-5 w-5 rounded-sm"
+              style={
+                on
+                  ? {
+                      backgroundColor: color,
+                      boxShadow: `0 0 12px ${color}`,
+                    }
+                  : { visibility: "hidden" }
+              }
+            />
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
 function emptyBoard(): TetrisBoard {
   return Array.from({ length: ROWS }, () => Array<string | null>(COLS).fill(null));
 }
@@ -31,15 +129,15 @@ function emptyBoard(): TetrisBoard {
 function SpectatorBoard({ player }: { player: TetrisPlayerScreen }) {
   const visible = player.board.slice(2);
   return (
-    <article className="rounded-xl border border-white/10 bg-[#121827] p-3">
+    <article className="glass-panel rounded-3xl p-4 shadow-luxe">
       <div className="mb-2 flex items-center justify-between">
-        <p className="truncate text-sm font-medium text-[#e8ecff]">{player.name}</p>
-        <span className="rounded-md border border-white/10 px-2 py-0.5 text-[11px] text-[#b6c2de]">
+        <p className="truncate text-sm font-medium text-on-surface">{player.name}</p>
+        <span className="rounded-md border border-outline-variant/20 px-2 py-0.5 text-[11px] text-on-surface-variant">
           {player.phase}
         </span>
       </div>
       <div
-        className="grid gap-px rounded-md bg-[#0d1018] p-1"
+        className="grid gap-px rounded-md bg-white p-1 shadow-inner"
         style={{ gridTemplateColumns: `repeat(${COLS}, minmax(0, 1fr))` }}
       >
         {visible.flatMap((row, r) =>
@@ -48,13 +146,13 @@ function SpectatorBoard({ player }: { player: TetrisPlayerScreen }) {
               key={`${player.id}-${r}-${c}`}
               className="aspect-square rounded-[2px]"
               style={{
-                backgroundColor: cell ? COLORS[cell] ?? "#6b7280" : "#1a2235",
+                backgroundColor: cell ? COLORS[cell] ?? "#6b7280" : "#f1f5f9",
               }}
             />
           ))
         )}
       </div>
-      <p className="mt-2 text-xs text-[#8f9bb7]">
+      <p className="mt-2 text-xs text-on-surface-variant">
         Skor {player.score} · Baris {player.lines} · Level {player.level}
       </p>
     </article>
@@ -105,12 +203,27 @@ export function TetrisGame() {
     if (tetrisState.phase === "playing") return 0;
     return (tetrisState.roster ?? []).filter((p) => !p.spectator && !p.ready).length;
   }, [tetrisState]);
-  const roomRoster = useMemo(() => {
-    return [...(tetrisState?.roster ?? [])].sort((a, b) => a.name.localeCompare(b.name));
+  const rankedRoomPlayers = useMemo(() => {
+    const roster = tetrisState?.roster ?? [];
+    const screens = new Map((tetrisState?.players ?? []).map((p) => [p.id, p]));
+    return [...roster]
+      .map((r) => {
+        const sc = screens.get(r.id);
+        return {
+          ...r,
+          score: sc?.score ?? r.score ?? 0,
+        };
+      })
+      .sort((a, b) => b.score - a.score);
   }, [tetrisState]);
 
   const onlineTetrisUsers = useMemo(
     () => users.filter((u) => u.game === "tetris").length,
+    [users]
+  );
+
+  const tetrisHeaderUsers = useMemo(
+    () => users.filter((u) => u.game === "tetris").map((u) => ({ id: u.id, name: u.name })),
     [users]
   );
 
@@ -120,7 +233,7 @@ export function TetrisGame() {
       x: number,
       y: number,
       color: string,
-      outline = "#2a3040"
+      outline = "#e2e8f0"
     ) => {
       ctx.fillStyle = color;
       ctx.fillRect(x, y, CELL, CELL);
@@ -131,75 +244,32 @@ export function TetrisGame() {
   );
 
   const paint = useCallback((ctx: CanvasRenderingContext2D, board: TetrisBoard, screen: TetrisPlayerScreen | null) => {
-    ctx.fillStyle = "#1a1d28";
-    ctx.fillRect(0, 0, CW, CH);
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, BOARD_W, BOARD_H);
 
     for (let r = 2; r < ROWS; r++) {
       for (let c = 0; c < COLS; c++) {
         const cell = board[r][c];
         const y = (r - 2) * CELL;
         const x = c * CELL;
-        const color = cell ? COLORS[cell] ?? "#666" : "#252830";
+        const color = cell ? COLORS[cell] ?? "#666" : "#f1f5f9";
         drawCell(ctx, x, y, color);
       }
     }
-    ctx.fillStyle = "#c8d0e0";
-    ctx.font = "14px system-ui";
-    ctx.textAlign = "left";
-    ctx.fillText("Skor", SIDEBAR_X, 16);
-    ctx.fillStyle = "#ffffff";
-    ctx.font = "700 20px Segoe UI";
-    ctx.fillText(String(screen?.score ?? 0), SIDEBAR_X, 38);
-    ctx.fillStyle = "#c8d0e0";
-    ctx.font = "14px Segoe UI";
-    ctx.fillText("Baris", SIDEBAR_X, 86);
-    ctx.fillStyle = "#ffffff";
-    ctx.font = "700 20px Segoe UI";
-    ctx.fillText(String(screen?.lines ?? 0), SIDEBAR_X, 108);
-    ctx.fillStyle = "#c8d0e0";
-    ctx.font = "14px Segoe UI";
-    ctx.fillText("Level", SIDEBAR_X, 156);
-    ctx.fillStyle = "#ffffff";
-    ctx.font = "700 20px Segoe UI";
-    ctx.fillText(String(screen?.level ?? 1), SIDEBAR_X, 178);
-
-    ctx.fillStyle = "#c8d0e0";
-    ctx.font = "14px Segoe UI";
-    ctx.fillText("Berikut", SIDEBAR_X, 234);
-    ctx.fillStyle = "#ffffff";
-    ctx.font = "700 28px Segoe UI";
-    ctx.fillText(screen?.next ?? "-", SIDEBAR_X + 20, 274);
-
-    const help = [
-      "A / D : geser",
-      "W : putar kanan",
-      "S : turun",
-      "Q : putar kiri",
-      "Spasi : hard drop",
-      "P : kirim pause",
-      "ENTER : ready",
-    ];
-    ctx.fillStyle = "#8890a8";
-    ctx.font = "12px Segoe UI";
-    let hy = CH - 120;
-    for (const line of help) {
-      ctx.fillText(line, SIDEBAR_X, hy);
-      hy += 16;
-    }
 
     if (screen?.phase === "paused" || screen?.phase === "game_over") {
-      ctx.fillStyle = "#181c28";
-      ctx.fillRect(8, 8, COLS * CELL - 16, CH - 16);
-      ctx.strokeStyle = "#405070";
+      ctx.fillStyle = "rgba(245,247,249,0.92)";
+      ctx.fillRect(8, 8, BOARD_W - 16, BOARD_H - 16);
+      ctx.strokeStyle = "#abadaf";
       ctx.lineWidth = 2;
-      ctx.strokeRect(8, 8, COLS * CELL - 16, CH - 16);
+      ctx.strokeRect(8, 8, BOARD_W - 16, BOARD_H - 16);
       ctx.fillStyle = screen.phase === "paused" ? "#f0e080" : "#f08080";
       ctx.font = "700 18px Segoe UI";
       ctx.textAlign = "center";
       ctx.fillText(
         screen.phase === "paused" ? "Jeda" : "Game Over",
-        (COLS * CELL) / 2,
-        CH / 2
+        BOARD_W / 2,
+        BOARD_H / 2
       );
       ctx.textAlign = "left";
     }
@@ -213,9 +283,8 @@ export function TetrisGame() {
     paint(ctx, board, screen);
   }, [paint]);
 
-  useKeyboardState({
-    active: true,
-    onKeyDown: (key, event) => {
+  const onTetrisKeyDown = useCallback(
+    (key: string, event: KeyboardEvent) => {
       if (["w", "a", "s", "d", " "].includes(key)) {
         event.preventDefault();
       }
@@ -230,13 +299,24 @@ export function TetrisGame() {
       else if (key === "d") sendTetrisInput("right");
       else if (key === "s") sendTetrisInput("soft_drop");
       else if (key === "w") sendTetrisInput("rotate_cw");
-      else if (key === "q") sendTetrisInput("rotate_ccw");
       else if (key === "p") sendTetrisInput("toggle_pause");
       else if (key === " ") {
         event.preventDefault();
         sendTetrisInput("hard_drop");
       }
     },
+    [
+      canPlayThisRound,
+      myRoomState,
+      sendTetrisInput,
+      sendTetrisReady,
+      tetrisState?.phase,
+    ]
+  );
+
+  useKeyboardState({
+    active: true,
+    onKeyDown: onTetrisKeyDown,
   });
 
   const statusText = useMemo(() => {
@@ -284,144 +364,231 @@ export function TetrisGame() {
   }, [tetrisState]);
 
   return (
-    <div className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6">
-      <div className="rounded-3xl border border-white/10 bg-[radial-gradient(circle_at_top,#2a2746_0%,#121423_56%,#0b0d12_100%)] p-6">
-        <h1 className="text-2xl font-semibold tracking-tight text-[#eef3ff]">Tetris Multiplayer</h1>
-        <p className="mt-2 text-sm text-[#9aa7c4]">
-          Setiap pemain punya board sendiri — bisa solo (satu orang ready) atau versus. User yang masuk saat
-          ronde berjalan jadi spectator sampai ronde selesai. Kontrol:{" "}
-          <span className="text-[#e8ecff]">WASD + Q + Spasi</span>
-          {mobileUi ? (
+    <div className="relative min-h-screen bg-surface text-on-surface">
+      <PrismGameHeader
+        variant="tetris"
+        title="Tetris Multiplayer"
+        tetrisOnlineUsers={tetrisHeaderUsers}
+      />
+
+      <div
+        className="pointer-events-none fixed top-[-10%] right-[-5%] -z-10 h-[40%] w-[40%] rounded-full bg-primary/5 blur-[120px]"
+        aria-hidden
+      />
+      <div
+        className="pointer-events-none fixed bottom-[-5%] left-[-5%] -z-10 h-[30%] w-[30%] rounded-full bg-secondary/5 blur-[100px]"
+        aria-hidden
+      />
+
+      <main className="mx-auto flex max-w-7xl flex-col items-start justify-center gap-8 px-4 pb-12 pt-24 md:flex-row">
+        <aside className="order-2 flex w-full flex-col gap-6 md:order-1 md:w-64">
+          {!shouldShowSpectatorView ? (
             <>
-              {" "}
-              — di layar sentuh gunakan <span className="text-[#e8ecff]">tombol di bawah board</span>.
+              <div className="glass-panel rounded-3xl p-6 shadow-[0px_24px_48px_rgba(44,47,49,0.06)]">
+                <p className="mb-1 text-xs font-bold uppercase tracking-widest text-on-surface-variant">
+                  Score
+                </p>
+                <h2 className="font-headline text-3xl font-black tracking-tight text-primary">
+                  {formatScore(myScreen?.score ?? 0)}
+                </h2>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="glass-panel rounded-3xl p-5">
+                  <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
+                    Lines
+                  </p>
+                  <p className="text-xl font-bold text-on-surface">{myScreen?.lines ?? 0}</p>
+                </div>
+                <div className="glass-panel rounded-3xl p-5">
+                  <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
+                    Level
+                  </p>
+                  <p className="text-xl font-bold text-secondary">
+                    {String(myScreen?.level ?? 1).padStart(2, "0")}
+                  </p>
+                </div>
+              </div>
+              <div className="glass-panel rounded-3xl p-6">
+                <p className="mb-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">
+                  Next Piece
+                </p>
+                <NextPiecePreview piece={myScreen?.next} />
+              </div>
             </>
           ) : (
-            "."
-          )}
-        </p>
-        <p className="mt-3 text-xs text-[#8a95b2]">
-          Realtime {connected ? "terhubung" : "terputus"} · user di room tetris: {onlineTetrisUsers} ·
-          round {tetrisState?.round ?? 0} · fase {tetrisState?.phase ?? "lobby"}
-        </p>
-      </div>
-
-      <div className="mt-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
-        {!shouldShowSpectatorView ? (
-          <section className="rounded-2xl border border-white/10 bg-[#111726] p-4">
-            <div className="-mx-1 overflow-x-auto pb-1">
-              <canvas
-                ref={canvasRef}
-                width={CW}
-                height={CH}
-                className="rounded-lg border border-[#2a3142]"
-              />
-            </div>
-            <div className="mt-4 flex flex-wrap items-center gap-3">
-              <p className="text-sm text-[#8f96ac]">
-                {statusText} · Skor {myScreen?.score ?? 0} · Baris {myScreen?.lines ?? 0} · Level{" "}
-                {myScreen?.level ?? 1}
+            <div className="glass-panel rounded-3xl p-6 shadow-[0px_24px_48px_rgba(44,47,49,0.06)]">
+              <p className="mb-1 text-xs font-bold uppercase tracking-widest text-on-surface-variant">Mode</p>
+              <p className="font-headline text-lg font-bold text-on-surface">Spectating</p>
+              <p className="mt-2 text-sm text-on-surface-variant">
+                {isSpectatorMode
+                  ? "Kamu join saat ronde berjalan — tonton sampai ronde selesai."
+                  : "Kamu sudah kalah di ronde ini — tonton hingga selesai."}
               </p>
-              {tetrisState?.phase === "lobby" && (
-                <p className="text-xs text-[#9aa7c4]">Menunggu ready: {waitingReadyCount}</p>
-              )}
             </div>
-            {mobileUi &&
-              tetrisState?.phase === "playing" &&
-              canPlayThisRound && (
-                <MobileTetrisControls
-                  className="mt-4"
-                  disabled={!canPlayThisRound}
-                  onAction={(action) => sendTetrisInput(action)}
-                />
-              )}
-          </section>
-        ) : (
-          <section className="rounded-2xl border border-white/10 bg-[#111726] p-4">
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-[#e9ecf4]">Spectate pemain aktif</h2>
-              <span className="text-xs text-[#8f96ac]">{otherPlayingBoards.length} board aktif</span>
-            </div>
-            <p className="mb-3 text-xs text-[#ffdc78]">
-              {isSpectatorMode
-                ? "Kamu join saat ronde sedang berjalan, jadi spectate dulu sampai ronde selesai."
-                : "Kamu sudah kalah di ronde ini. Sekarang spectate sampai ronde selesai."}
-            </p>
-            {otherPlayingBoards.length === 0 ? (
-              <p className="rounded-lg border border-dashed border-white/15 bg-[#0d1220] px-3 py-4 text-sm text-[#8f96ac]">
-                Belum ada board aktif untuk ditonton.
-              </p>
-            ) : (
-              <div className="grid gap-3 sm:grid-cols-2">
-                {otherPlayingBoards.map((player) => (
-                  <SpectatorBoard key={player.id} player={player} />
-                ))}
-              </div>
-            )}
-          </section>
-        )}
-
-        <aside className="rounded-2xl border border-white/10 bg-[#111726] p-4">
-          <h2 className="text-sm font-semibold text-[#e9ecf4]">Room Tetris</h2>
-          <p className="mt-2 text-xs text-[#9aa7c4]">
-            Fase: <span className="text-[#e8ecff]">{tetrisState?.phase ?? "lobby"}</span>
-            {(tetrisState?.phase === "lobby" || tetrisState?.phase === "finished") && (
-              <>
-                {" "}
-                · Menunggu ready: <span className="text-[#e8ecff]">{waitingReadyCount}</span>
-              </>
-            )}
-            {tetrisState?.phase === "playing" && (
-              <>
-                {" "}
-                · <span className="text-[#e8ecff]">Ronde berlangsung</span>
-              </>
-            )}
-          </p>
-
-          {(tetrisState?.phase === "lobby" || tetrisState?.phase === "finished") &&
-            myRoomState &&
-            !myRoomState.spectator && (
-            <button
-              type="button"
-              onClick={() => sendTetrisReady(!myRoomState.ready)}
-              className="mt-3 w-full rounded-lg bg-[#3d4860] px-4 py-2 text-sm text-white hover:bg-[#4d5a78]"
-            >
-              {myRoomState.ready ? "Batal Ready" : "Ready"}
-            </button>
           )}
-
-          <h3 className="mt-4 text-xs font-semibold uppercase tracking-wide text-[#8f96ac]">
-            User di room
-          </h3>
-          <ul className="mt-2 space-y-1.5 text-xs text-[#9aa7c4]">
-            {roomRoster.map((p) => (
-              <li
-                key={p.id}
-                className="flex items-center justify-between rounded-md border border-white/10 bg-[#0f1420] px-2.5 py-2"
-              >
-                <span className="truncate text-[#e8ecff]">
-                  {p.name}
-                  {p.id === selfId ? " (kamu)" : ""}
-                </span>
-                <span className="text-[#8f96ac]">
-                  {p.spectator ? "spectator" : p.done ? "kalah" : p.ready ? "ready" : "idle"}
-                </span>
-              </li>
-            ))}
-          </ul>
         </aside>
-      </div>
+
+        <section className="order-1 flex w-full flex-1 flex-col items-center md:order-2">
+          {!shouldShowSpectatorView ? (
+            <>
+              <div className="relative w-full">
+                <div className="mx-auto w-fit">
+                  <div className="glass-panel rounded-[2rem] border-4 border-surface-container-lowest p-4 shadow-[0px_32px_64px_rgba(70,71,211,0.08)]">
+                    <div
+                      className="tetris-grid relative overflow-hidden rounded-xl bg-white"
+                      style={{ width: BOARD_W, height: BOARD_H }}
+                    >
+                      <canvas
+                        ref={canvasRef}
+                        width={BOARD_W}
+                        height={BOARD_H}
+                        className="absolute inset-0 block h-full w-full"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-4 w-full max-w-[min(100%,28rem)] px-1 text-center">
+                <p className="text-[11px] leading-relaxed text-on-surface-variant">
+                  <span className="font-semibold text-on-surface">Kontrol keyboard:</span> A/D geser · S turun · W putar ·
+                  Spasi hard drop · P jeda · ENTER ready
+                </p>
+                <p className="mt-1.5 text-[10px] text-on-surface-variant/85">
+                  Realtime {connected ? "terhubung" : "terputus"} · ronde {tetrisState?.round ?? 0} · {onlineTetrisUsers}{" "}
+                  online
+                  {mobileUi ? " · kontrol sentuh di bawah saat bermain" : ""}
+                </p>
+              </div>
+
+              <p className="mt-3 text-center text-sm text-on-surface-variant md:hidden">{statusText}</p>
+              {tetrisState?.phase === "lobby" && (
+                <p className="mt-2 text-center text-xs text-on-surface-variant">
+                  Menunggu ready: {waitingReadyCount}
+                </p>
+              )}
+              {mobileUi &&
+                tetrisState?.phase === "playing" &&
+                canPlayThisRound && (
+                  <MobileTetrisControls
+                    className="mt-4 w-full max-w-md"
+                    disabled={!canPlayThisRound}
+                    onAction={(action) => sendTetrisInput(action)}
+                  />
+                )}
+            </>
+          ) : (
+            <div className="glass-panel w-full max-w-4xl rounded-[2rem] p-4 shadow-luxe sm:p-6">
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className="text-sm font-semibold text-on-surface">Spectate pemain aktif</h2>
+                <span className="text-xs text-on-surface-variant">{otherPlayingBoards.length} board aktif</span>
+              </div>
+              <p className="mb-3 text-xs text-secondary">
+                {isSpectatorMode
+                  ? "Kamu join saat ronde sedang berjalan, jadi spectate dulu sampai ronde selesai."
+                  : "Kamu sudah kalah di ronde ini. Sekarang spectate sampai ronde selesai."}
+              </p>
+              {otherPlayingBoards.length === 0 ? (
+                <p className="rounded-lg border border-dashed border-outline-variant/30 bg-surface-container-low px-3 py-4 text-sm text-on-surface-variant">
+                  Belum ada board aktif untuk ditonton.
+                </p>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {otherPlayingBoards.map((player) => (
+                    <SpectatorBoard key={player.id} player={player} />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </section>
+
+        <aside className="order-3 flex w-full flex-col gap-6 md:w-72">
+          <div className="glass-panel flex max-h-[632px] min-h-0 flex-col overflow-hidden rounded-3xl p-6 shadow-luxe">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="font-headline text-lg font-bold tracking-tight text-on-surface">Room Players</h3>
+              <span className="h-2 w-2 animate-pulse rounded-full bg-tertiary" aria-hidden />
+            </div>
+
+            <p className="mb-3 text-[11px] text-on-surface-variant">
+              Fase <span className="font-medium text-on-surface">{tetrisState?.phase ?? "lobby"}</span>
+              {tetrisState?.phase === "playing" ? " · ronde berlangsung" : null}
+              {(tetrisState?.phase === "lobby" || tetrisState?.phase === "finished") && (
+                <> · tunggu ready: {waitingReadyCount}</>
+              )}
+            </p>
+
+            {(tetrisState?.phase === "lobby" || tetrisState?.phase === "finished") &&
+              myRoomState &&
+              !myRoomState.spectator && (
+                <button
+                  type="button"
+                  onClick={() => sendTetrisReady(!myRoomState.ready)}
+                  className="mb-4 w-full rounded-2xl px-4 py-3 text-sm font-bold text-white gradient-primary transition-shadow hover:shadow-[0_0_20px_rgba(70,71,211,0.25)]"
+                >
+                  {myRoomState.ready ? "Batal Ready" : "Ready"}
+                </button>
+              )}
+
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
+              {rankedRoomPlayers.map((p, idx) => {
+                const rank = idx + 1;
+                const isSelf = p.id === selfId;
+                const rowClass = isSelf
+                  ? "flex items-center gap-3 rounded-2xl border border-primary/20 bg-primary/10 p-3"
+                  : "flex items-center gap-3 rounded-2xl p-3 transition-colors duration-200 hover:bg-surface-container-low";
+                return (
+                  <div key={p.id} className={rowClass}>
+                    <div className="relative shrink-0">
+                      <div
+                        className={`grid h-10 w-10 place-items-center rounded-full border-2 bg-secondary-container text-[11px] font-bold text-secondary ${
+                          isSelf ? "border-primary" : "border-transparent"
+                        }`}
+                      >
+                        {p.name.slice(0, 2).toUpperCase()}
+                      </div>
+                      {isSelf && (
+                        <span className="absolute -bottom-1 -right-1 rounded-full bg-primary px-1 text-[8px] font-bold text-white">
+                          YOU
+                        </span>
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-bold leading-tight text-on-surface">{p.name}</p>
+                      <p
+                        className={`text-[10px] font-semibold ${
+                          isSelf ? "text-primary" : "text-on-surface-variant"
+                        }`}
+                      >
+                        {formatScore(p.score)} pts
+                        {p.spectator ? " · spectator" : ""}
+                        {!p.spectator && p.done ? " · out" : ""}
+                      </p>
+                    </div>
+                    <span
+                      className={`shrink-0 text-xs font-black ${
+                        isSelf ? "text-primary" : "text-on-surface-variant"
+                      }`}
+                    >
+                      #{rank}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </aside>
+      </main>
 
       {showWinnerPopup && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/65 px-4">
-          <div className="w-full max-w-sm rounded-xl border border-[#3a4660] bg-[#111725] p-5">
-            <h3 className="text-lg font-semibold text-[#e8ecff]">Winner</h3>
-            <p className="mt-2 text-sm text-[#9db0d0]">{winnerPopupText}</p>
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-on-surface/25 px-4 backdrop-blur-sm">
+          <div className="glass-panel w-full max-w-sm rounded-3xl p-6 shadow-luxe">
+            <h3 className="font-headline text-lg font-bold text-on-surface">Winner</h3>
+            <p className="mt-2 text-sm text-on-surface-variant">{winnerPopupText}</p>
             <button
               type="button"
               onClick={() => setShowWinnerPopup(false)}
-              className="mt-4 w-full rounded-lg bg-[#3d4860] px-4 py-2 text-sm text-white hover:bg-[#4d5a78]"
+              className="mt-4 w-full rounded-2xl px-4 py-3 text-sm font-bold text-white gradient-primary"
             >
               Close
             </button>
@@ -430,10 +597,10 @@ export function TetrisGame() {
       )}
 
       {showLosePopup && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/65 px-4">
-          <div className="w-full max-w-sm rounded-xl border border-[#5b3841] bg-[#1a1116] p-5">
-            <h3 className="text-lg font-semibold text-[#ffd9df]">Kamu kalah</h3>
-            <p className="mt-2 text-sm text-[#e3b7c1]">
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-on-surface/25 px-4 backdrop-blur-sm">
+          <div className="glass-panel w-full max-w-sm rounded-3xl p-6 shadow-luxe">
+            <h3 className="font-headline text-lg font-bold text-secondary">Kamu kalah</h3>
+            <p className="mt-2 text-sm text-on-surface-variant">
               Ronde ini selesai untukmu. Setelah popup ditutup, kamu akan spectate sampai ronde selesai.
             </p>
             <button
@@ -442,7 +609,7 @@ export function TetrisGame() {
                 setShowLosePopup(false);
                 setWatchAfterLose(true);
               }}
-              className="mt-4 w-full rounded-lg bg-[#6e3a48] px-4 py-2 text-sm text-white hover:bg-[#844656]"
+              className="mt-4 w-full rounded-2xl px-4 py-3 text-sm font-bold text-white gradient-primary"
             >
               Close
             </button>

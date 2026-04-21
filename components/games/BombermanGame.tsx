@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { PrismGameHeader } from "@/components/game-ui/PrismGameHeader";
 import { useRealtime } from "@/components/realtime/RealtimeProvider";
 import { MobileDpad } from "@/components/games/MobileDpad";
 import { useMobileGameUi } from "@/lib/hooks/useMobileGameUi";
@@ -394,49 +395,54 @@ export function BombermanGame() {
       : 0;
 
   return (
-    <div className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6">
-      <div className="mb-6 rounded-3xl border border-white/10 bg-[radial-gradient(circle_at_top,#2a1f3d_0%,#12101c_55%,#0a090e_100%)] p-6 shadow-[0_35px_90px_-55px_rgba(0,0,0,0.95)]">
-        <p className="text-xs uppercase tracking-[0.2em] text-[#b8a8d4]">Bomberman</p>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight text-[#f4f0ff] sm:text-3xl">
-          Arena klasik — multiplayer realtime
-        </h1>
-        <p className="mt-2 max-w-2xl text-sm text-[#a89cc0]">
-          Ledakan berantai, blok brick, power-up jarak &amp; jumlah bom. Minimal dua pemain ready untuk
-          mulai.
-        </p>
-        {mobileUi && (
-          <p className="mt-2 text-xs text-[#8a7ca0]">
-            Di HP: pakai kontrol sentuh di bawah arena (arah + bom di tengah). Keyboard WASD dan Spasi
-            tetap didukung.
-          </p>
-        )}
+    <div className="relative min-h-screen overflow-x-hidden bg-surface text-on-surface">
+      <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
+        <div className="absolute -left-[10%] -top-[20%] h-[60%] w-[60%] rounded-full bg-primary/10 blur-[120px]" />
+        <div className="absolute -right-[10%] top-[40%] h-[50%] w-[50%] rounded-full bg-secondary/10 blur-[120px]" />
       </div>
 
-      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
-        <section className="rounded-3xl border border-white/10 bg-[#0c0a12]/95 p-4 shadow-[0_40px_100px_-60px_rgba(120,60,200,0.35)]">
+      <PrismGameHeader variant="bomberman" title="" connected={connected} />
+
+      <main className="mx-auto max-w-[1440px] px-4 pb-12 pt-28 sm:px-8">
+        <div className="mb-10 text-center">
+          <h1 className="font-headline text-4xl font-extrabold tracking-tighter text-on-surface md:text-5xl lg:text-6xl">
+            Bomberman
+          </h1>
+          <p className="mt-2 font-body text-lg tracking-wide text-on-surface-variant">
+            Arena Klasik — <span className="font-semibold text-primary">Multiplayer Realtime</span>
+          </p>
+          {mobileUi && (
+            <p className="mx-auto mt-3 max-w-xl text-sm text-on-surface-variant">
+              Di HP: kontrol sentuh di bawah arena. Keyboard WASD + Spasi.
+            </p>
+          )}
+        </div>
+
+        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
+        <section className="glass-panel rounded-[2rem] p-4 shadow-luxe sm:p-6">
           <div className="mb-3 flex flex-wrap gap-2 text-xs">
-            <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[#d4ccf0]">
+            <span className="rounded-full border border-outline-variant/15 bg-surface-container-low px-2.5 py-1 text-on-surface-variant">
               Round {bomberState?.round ?? 0}
             </span>
-            <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[#d4ccf0]">
+            <span className="rounded-full border border-outline-variant/15 bg-surface-container-low px-2.5 py-1 text-on-surface-variant">
               {bomberState?.phase ?? "lobby"}
             </span>
             <span
               className={`rounded-full border px-2.5 py-1 ${
                 connected
-                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
-                  : "border-rose-500/30 bg-rose-500/10 text-rose-200"
+                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700"
+                  : "border-rose-500/30 bg-rose-500/10 text-rose-700"
               }`}
             >
               {connected ? "Terhubung" : "Terputus"}
             </span>
           </div>
-          <div className="overflow-x-auto rounded-2xl border border-[#2a2438] bg-black/40 p-2">
+          <div className="overflow-x-auto rounded-2xl border border-outline-variant/20 bg-surface-container-low p-2">
             <canvas
               ref={canvasRef}
               width={w}
               height={h}
-              className="mx-auto block max-w-full rounded-xl shadow-[0_20px_50px_rgba(0,0,0,0.65)]"
+              className="mx-auto block max-w-full rounded-xl shadow-luxe"
             />
           </div>
           {mobileUi && bomberState?.phase === "playing" && (
@@ -454,21 +460,21 @@ export function BombermanGame() {
         </section>
 
         <aside className="space-y-4">
-          <div className="rounded-2xl border border-white/10 bg-[#14101f] p-4">
-            <h2 className="text-sm font-semibold text-[#ece8ff]">Match</h2>
+          <div className="glass-panel rounded-[2rem] p-6 shadow-luxe">
+            <h2 className="text-sm font-semibold text-on-surface">Match</h2>
             {bomberState?.phase === "lobby" && (
-              <p className="mt-2 text-sm text-[#a89cc0]">
-                Menunggu ready: <span className="text-[#ece8ff]">{waitingReady}</span>
+              <p className="mt-2 text-sm text-on-surface-variant">
+                Menunggu ready: <span className="font-medium text-on-surface">{waitingReady}</span>
               </p>
             )}
             {bomberState?.phase === "playing" && (
-              <p className="mt-2 text-sm text-[#a89cc0]">Ronde sedang berlangsung.</p>
+              <p className="mt-2 text-sm text-on-surface-variant">Ronde sedang berlangsung.</p>
             )}
             {bomberState?.phase === "finished" && (
-              <p className="mt-2 text-sm text-[#a89cc0]">Ronde selesai.</p>
+              <p className="mt-2 text-sm text-on-surface-variant">Ronde selesai.</p>
             )}
             {me?.spectator && bomberState?.phase === "playing" && (
-              <p className="mt-2 text-xs text-[#ffd78a]">
+              <p className="mt-2 text-xs text-secondary">
                 Kamu spectator sampai ronde ini selesai.
               </p>
             )}
@@ -476,14 +482,14 @@ export function BombermanGame() {
               type="button"
               disabled={bomberState?.phase === "playing"}
               onClick={() => sendBomberReady(!(me?.ready ?? false))}
-              className="mt-4 w-full rounded-xl bg-[#7c3aed] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#8b5cf6] disabled:cursor-not-allowed disabled:opacity-45"
+              className="mt-4 w-full rounded-2xl px-4 py-3 text-sm font-bold text-white gradient-primary transition-shadow hover:shadow-[0_0_20px_rgba(70,71,211,0.25)] disabled:cursor-not-allowed disabled:opacity-45"
             >
               {me?.ready ? "Batal ready" : "Ready"}
             </button>
           </div>
 
-          <div className="rounded-2xl border border-white/10 bg-[#14101f] p-4">
-            <h2 className="text-sm font-semibold text-[#ece8ff]">Pemain</h2>
+          <div className="glass-panel rounded-[2rem] p-6 shadow-luxe">
+            <h2 className="text-sm font-semibold text-on-surface">Pemain</h2>
             <ul className="mt-3 space-y-2">
               {(bomberState?.players ?? []).map((p: BomberPlayerState, idx: number) => {
                 const online = users.some((u) => u.id === p.id && u.game === "bomberman");
@@ -491,9 +497,9 @@ export function BombermanGame() {
                 return (
                   <li
                     key={p.id}
-                    className="flex items-center justify-between gap-2 rounded-lg border border-white/5 bg-white/[0.04] px-2.5 py-2 text-xs text-[#b4aac8]"
+                    className="flex items-center justify-between gap-2 rounded-2xl border border-outline-variant/10 bg-surface-container-low px-2.5 py-2 text-xs text-on-surface-variant"
                   >
-                    <span className="min-w-0 truncate font-medium text-[#ece8ff]">
+                    <span className="min-w-0 truncate font-medium text-on-surface">
                       <span
                         className="mr-2 inline-block h-2.5 w-2.5 shrink-0 rounded-full align-middle"
                         style={{ backgroundColor: playerColor(p.id, idx) }}
@@ -502,7 +508,7 @@ export function BombermanGame() {
                       {p.id === selfId ? " (kamu)" : ""}
                       {!online ? " · offline" : ""}
                     </span>
-                    <span className="shrink-0 text-[#9d92b5]">
+                    <span className="shrink-0">
                       {label} · {p.score}
                     </span>
                   </li>
@@ -512,32 +518,33 @@ export function BombermanGame() {
           </div>
         </aside>
       </div>
+      </main>
 
       {(showFinished || showEliminated) && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-[#050308]/80 px-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl border border-white/15 bg-[#161222] p-6 shadow-[0_30px_80px_-40px_rgba(80,40,160,0.5)]">
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-on-surface/25 px-4 backdrop-blur-sm">
+          <div className="glass-panel w-full max-w-md rounded-3xl p-6 shadow-luxe">
             {showFinished ? (
               <>
-                <h3 className="text-lg font-semibold text-[#f4f0ff]">Round selesai</h3>
-                <p className="mt-2 text-sm text-[#b8aacf]">{finishedText}</p>
+                <h3 className="font-headline text-lg font-bold text-on-surface">Round selesai</h3>
+                <p className="mt-2 text-sm text-on-surface-variant">{finishedText}</p>
                 <button
                   type="button"
                   onClick={() => setShowFinished(false)}
-                  className="mt-5 w-full rounded-xl bg-[#7c3aed] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#8b5cf6]"
+                  className="mt-5 w-full rounded-2xl px-4 py-3 text-sm font-bold text-white gradient-primary"
                 >
                   Close
                 </button>
               </>
             ) : (
               <>
-                <h3 className="text-lg font-semibold text-[#ffb4a8]">Kamu tereliminasi</h3>
-                <p className="mt-2 text-sm text-[#b8aacf]">
+                <h3 className="font-headline text-lg font-bold text-secondary">Kamu tereliminasi</h3>
+                <p className="mt-2 text-sm text-on-surface-variant">
                   Tunggu ronde selesai untuk ikut lagi di ronde berikutnya.
                 </p>
                 <button
                   type="button"
                   onClick={() => setShowEliminated(false)}
-                  className="mt-5 w-full rounded-xl bg-[#7c3aed] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#8b5cf6]"
+                  className="mt-5 w-full rounded-2xl px-4 py-3 text-sm font-bold text-white gradient-primary"
                 >
                   Close
                 </button>

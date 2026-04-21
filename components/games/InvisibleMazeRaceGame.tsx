@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { PrismGameHeader } from "@/components/game-ui/PrismGameHeader";
 import { MobileDpad } from "@/components/games/MobileDpad";
 import { useRealtime } from "@/components/realtime/RealtimeProvider";
 import { useMobileGameUi } from "@/lib/hooks/useMobileGameUi";
@@ -192,38 +193,128 @@ export function InvisibleMazeRaceGame() {
     mazeState?.winnerId && mazeState.players.find((player) => player.id === mazeState.winnerId);
 
   return (
-    <div className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6">
-      <div className="mb-6 rounded-3xl border border-white/10 bg-[radial-gradient(circle_at_top,#3b2a11_0%,#171208_55%,#0a0907_100%)] p-6 shadow-[0_35px_90px_-55px_rgba(0,0,0,0.95)]">
-        <p className="text-xs uppercase tracking-[0.2em] text-[#d8b889]">Invisible Maze Race</p>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight text-[#f7eddc] sm:text-3xl">
-          Hafalkan peta, lalu balapan dalam gelap
-        </h1>
-        <p className="mt-2 max-w-2xl text-sm text-[#c4aa86]">
-          Saat fase memorize, dinding terlihat beberapa detik. Setelah itu, dinding menghilang dan kamu
-          harus sampai ke kotak merah lebih dulu.
-        </p>
-      </div>
+    <div className="min-h-screen bg-surface text-on-surface">
+      <PrismGameHeader variant="maze" title="Invisible Maze Race" />
 
-      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
-        <section className="rounded-3xl border border-white/10 bg-[#0b0f16]/95 p-4">
+      <main className="flex min-h-screen flex-col gap-8 px-4 pb-12 pt-24 lg:flex-row lg:px-8">
+        <aside className="flex w-full flex-col gap-6 lg:w-80">
+          <div className="glass-panel flex flex-col gap-6 rounded-[2rem] border border-white/40 p-6 shadow-luxe">
+            <div>
+              <h2 className="font-headline text-xl font-bold text-on-surface">Match Details</h2>
+              <p className="text-sm text-on-surface-variant">Race mode · realtime</p>
+            </div>
+            <div className="space-y-4">
+              <div className="flex flex-col gap-2 rounded-2xl bg-surface-container-low p-4">
+                <div className="flex items-center justify-between text-sm font-semibold">
+                  <span className="text-on-surface-variant">Status</span>
+                  <span className="text-secondary">{mazeState?.phase ?? "lobby"}</span>
+                </div>
+                <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-container">
+                  <div className="h-full w-3/4 rounded-full bg-secondary" />
+                </div>
+              </div>
+            </div>
+            <p className="text-xs text-on-surface-variant">
+              Saat memorize, dinding terlihat sebentar. Lalu balapan dalam gelap menuju finish merah.
+            </p>
+          </div>
+          <div className="rounded-[2rem] bg-surface-container-low p-6">
+            <h3 className="font-headline text-sm font-bold uppercase tracking-wider text-on-surface-variant">
+              How to Play
+            </h3>
+            <div className="mt-3 space-y-3 text-sm leading-relaxed text-on-surface-variant">
+              <p className="flex gap-2">
+                <span className="material-symbols-outlined text-primary text-lg">visibility_off</span>
+                Labirin bisa tak terlihat — ingat jalur saat fase memorize.
+              </p>
+              <p className="flex gap-2">
+                <span className="material-symbols-outlined text-secondary text-lg">speed</span>
+                Sampai finish lebih dulu dari lawan.
+              </p>
+            </div>
+          </div>
+
+          <div className="glass-panel rounded-[2rem] p-6 shadow-luxe">
+            <h2 className="text-sm font-semibold text-on-surface">Match</h2>
+            {mazeState?.phase === "lobby" && (
+              <p className="mt-2 text-sm text-on-surface-variant">
+                Menunggu ready: <span className="font-medium text-on-surface">{waitingReady}</span>
+              </p>
+            )}
+            {mazeState?.phase === "memorize" && (
+              <p className="mt-2 text-sm text-on-surface-variant">Hafalkan jalur secepat mungkin.</p>
+            )}
+            {mazeState?.phase === "racing" && (
+              <p className="mt-2 text-sm text-on-surface-variant">Dinding disembunyikan. Cari finish.</p>
+            )}
+            {mazeState?.phase === "finished" && (
+              <p className="mt-2 text-sm text-on-surface-variant">
+                {winner ? `Pemenang: ${winner.name}` : "Ronde berakhir tanpa pemenang."}
+              </p>
+            )}
+            {me?.spectator && mazeState?.phase !== "lobby" && (
+              <p className="mt-2 text-xs text-secondary">Kamu spectator untuk ronde ini.</p>
+            )}
+            <button
+              type="button"
+              disabled={!mazeState || mazeState.phase === "memorize" || mazeState.phase === "racing"}
+              onClick={() => sendMazeReady(!(me?.ready ?? false))}
+              className="mt-4 w-full rounded-2xl px-4 py-3 text-sm font-bold text-white gradient-primary transition-shadow hover:shadow-[0_0_20px_rgba(70,71,211,0.25)] disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              {me?.ready ? "Batal ready" : "Ready"}
+            </button>
+          </div>
+
+          <div className="glass-panel rounded-[2rem] p-6 shadow-luxe">
+            <h2 className="text-sm font-semibold text-on-surface">Pemain</h2>
+            <ul className="mt-3 space-y-2">
+              {(mazeState?.players ?? []).map((player, idx) => (
+                <li
+                  key={player.id}
+                  className="flex items-center justify-between gap-2 rounded-2xl border border-outline-variant/10 bg-surface-container-low px-2.5 py-2 text-xs text-on-surface-variant"
+                >
+                  <span className="min-w-0 truncate font-medium text-on-surface">
+                    <span
+                      className="mr-2 inline-block h-2.5 w-2.5 shrink-0 rounded-full align-middle"
+                      style={{ backgroundColor: playerColor(player.id, idx) }}
+                    />
+                    {player.name}
+                    {player.id === selfId ? " (kamu)" : ""}
+                  </span>
+                  <span className="shrink-0">
+                    {player.spectator ? "Spectator" : player.finished ? "Finish" : player.ready ? "Ready" : "Idle"}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </aside>
+
+        <section className="relative min-h-[min(70vh,560px)] flex-1">
+        <div className="glass-panel relative h-full min-h-[min(70vh,560px)] overflow-hidden rounded-[3rem] border border-white/20 shadow-luxe">
+          <div className="absolute inset-0 bg-[#0b0f10] maze-grid-bg opacity-95" />
+          <div className="pointer-events-none absolute -left-24 -top-24 h-96 w-96 rounded-full bg-primary/20 blur-[100px]" />
+          <div className="pointer-events-none absolute -bottom-24 -right-24 h-96 w-96 rounded-full bg-secondary/10 blur-[100px]" />
+
+          <div className="relative z-10 p-4">
           <div className="mb-3 flex flex-wrap gap-2 text-xs">
-            <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[#d9c9b2]">
+            <span className="rounded-full border border-white/15 bg-white/10 px-2.5 py-1 text-white/90">
               Round {mazeState?.round ?? 0}
             </span>
-            <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[#d9c9b2]">
+            <span className="rounded-full border border-white/15 bg-white/10 px-2.5 py-1 text-white/90">
               {mazeState?.phase ?? "lobby"}
             </span>
             <span
               className={`rounded-full border px-2.5 py-1 ${
                 connected
-                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
-                  : "border-rose-500/30 bg-rose-500/10 text-rose-200"
+                  ? "border-emerald-400/40 bg-emerald-500/20 text-emerald-100"
+                  : "border-rose-400/40 bg-rose-500/20 text-rose-100"
               }`}
             >
               {connected ? "Terhubung" : "Terputus"}
             </span>
           </div>
-          <div className="relative overflow-x-auto rounded-2xl border border-[#2a2438] bg-black/40 p-2">
+          <div className="relative overflow-x-auto rounded-2xl border border-white/10 bg-black/30 p-2">
             <canvas
               ref={canvasRef}
               width={width}
@@ -260,81 +351,26 @@ export function InvisibleMazeRaceGame() {
               onDirection={(dir) => sendMazeMove(dir)}
             />
           )}
+          </div>
+        </div>
         </section>
-
-        <aside className="space-y-4">
-          <div className="rounded-2xl border border-white/10 bg-[#14110d] p-4">
-            <h2 className="text-sm font-semibold text-[#f7eddc]">Match</h2>
-            {mazeState?.phase === "lobby" && (
-              <p className="mt-2 text-sm text-[#d0ba98]">
-                Menunggu ready: <span className="text-[#fff2dc]">{waitingReady}</span>
-              </p>
-            )}
-            {mazeState?.phase === "memorize" && (
-              <p className="mt-2 text-sm text-[#d0ba98]">Hafalkan jalur secepat mungkin.</p>
-            )}
-            {mazeState?.phase === "racing" && (
-              <p className="mt-2 text-sm text-[#d0ba98]">Dinding disembunyikan. Cari finish.</p>
-            )}
-            {mazeState?.phase === "finished" && (
-              <p className="mt-2 text-sm text-[#d0ba98]">
-                {winner ? `Pemenang: ${winner.name}` : "Ronde berakhir tanpa pemenang."}
-              </p>
-            )}
-            {me?.spectator && mazeState?.phase !== "lobby" && (
-              <p className="mt-2 text-xs text-[#f7d9a8]">Kamu spectator untuk ronde ini.</p>
-            )}
-            <button
-              type="button"
-              disabled={!mazeState || mazeState.phase === "memorize" || mazeState.phase === "racing"}
-              onClick={() => sendMazeReady(!(me?.ready ?? false))}
-              className="mt-4 w-full rounded-xl bg-[#d97706] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#ea8a16] disabled:cursor-not-allowed disabled:opacity-45"
-            >
-              {me?.ready ? "Batal ready" : "Ready"}
-            </button>
-          </div>
-
-          <div className="rounded-2xl border border-white/10 bg-[#14110d] p-4">
-            <h2 className="text-sm font-semibold text-[#f7eddc]">Pemain</h2>
-            <ul className="mt-3 space-y-2">
-              {(mazeState?.players ?? []).map((player, idx) => (
-                <li
-                  key={player.id}
-                  className="flex items-center justify-between gap-2 rounded-lg border border-white/5 bg-white/[0.04] px-2.5 py-2 text-xs text-[#d8c3a4]"
-                >
-                  <span className="min-w-0 truncate font-medium text-[#fff2dc]">
-                    <span
-                      className="mr-2 inline-block h-2.5 w-2.5 shrink-0 rounded-full align-middle"
-                      style={{ backgroundColor: playerColor(player.id, idx) }}
-                    />
-                    {player.name}
-                    {player.id === selfId ? " (kamu)" : ""}
-                  </span>
-                  <span className="shrink-0 text-[#b8a080]">
-                    {player.spectator ? "Spectator" : player.finished ? "Finish" : player.ready ? "Ready" : "Idle"}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </aside>
-      </div>
+      </main>
 
       {showResult && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-[#050308]/80 px-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl border border-white/15 bg-[#161222] p-6 shadow-[0_30px_80px_-40px_rgba(80,40,160,0.5)]">
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-on-surface/25 px-4 backdrop-blur-sm">
+          <div className="glass-panel w-full max-w-md rounded-3xl p-6 shadow-luxe">
             <h3
-              className={`text-lg font-semibold ${
-                resultTitle.includes("Menang") ? "text-[#c7f9cc]" : "text-[#ffb4a8]"
+              className={`font-headline text-lg font-bold ${
+                resultTitle.includes("Menang") ? "text-tertiary" : "text-secondary"
               }`}
             >
               {resultTitle}
             </h3>
-            <p className="mt-2 text-sm text-[#b8aacf]">{resultMessage}</p>
+            <p className="mt-2 text-sm text-on-surface-variant">{resultMessage}</p>
             <button
               type="button"
               onClick={() => setShowResult(false)}
-              className="mt-5 w-full rounded-xl bg-[#d97706] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#ea8a16]"
+              className="mt-5 w-full rounded-2xl px-4 py-3 text-sm font-bold text-white gradient-primary"
             >
               Tutup
             </button>
