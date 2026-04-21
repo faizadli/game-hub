@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { GamePageHeroTitle } from "@/components/game-ui/GamePageHeroTitle";
 import { PrismGameHeader } from "@/components/game-ui/PrismGameHeader";
 import { useRealtime } from "@/components/realtime/RealtimeProvider";
@@ -87,6 +87,7 @@ export function FlappyGame() {
   });
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [fsError, setFsError] = useState<string | null>(null);
+  const [viewportSize, setViewportSize] = useState({ w: W, h: H });
 
   const { users, connected } = useRealtime();
 
@@ -285,6 +286,24 @@ export function FlappyGame() {
   }, []);
 
   useEffect(() => {
+    const readViewport = () => {
+      const vv = window.visualViewport;
+      const w = Math.floor(vv?.width ?? window.innerWidth);
+      const h = Math.floor(vv?.height ?? window.innerHeight);
+      setViewportSize({ w, h });
+    };
+    readViewport();
+    window.addEventListener("resize", readViewport);
+    window.addEventListener("orientationchange", readViewport);
+    window.visualViewport?.addEventListener("resize", readViewport);
+    return () => {
+      window.removeEventListener("resize", readViewport);
+      window.removeEventListener("orientationchange", readViewport);
+      window.visualViewport?.removeEventListener("resize", readViewport);
+    };
+  }, []);
+
+  useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.code === "Space" || e.key === " ") {
         e.preventDefault();
@@ -326,12 +345,36 @@ export function FlappyGame() {
   }, []);
 
   const flappyOnline = users.filter((u) => u.game === "flappy").length;
+  const boardSize = useMemo(() => {
+    if (!isFullscreen) return { w: 380, h: Math.round((380 / W) * H) };
+    const vw = Math.max(1, viewportSize.w);
+    const vh = Math.max(1, viewportSize.h);
+    const ratio = W / H;
+    let fittedW = vw;
+    let fittedH = fittedW / ratio;
+    if (fittedH > vh) {
+      fittedH = vh;
+      fittedW = fittedH * ratio;
+    }
+    return {
+      w: Math.round(fittedW),
+      h: Math.round(fittedH),
+    };
+  }, [isFullscreen, viewportSize.h, viewportSize.w]);
+
   const gameShellClass = isFullscreen
-    ? "group relative h-screen w-screen touch-manipulation select-none overflow-hidden bg-black"
+    ? "group relative flex h-[100dvh] w-[100dvw] touch-manipulation select-none items-center justify-center overflow-hidden bg-black"
     : "group relative w-full max-w-[380px] touch-manipulation select-none overflow-hidden rounded-[2.5rem] shadow-luxe";
-  const canvasClass = isFullscreen
-    ? "relative z-10 mx-auto block h-full w-auto max-w-full bg-transparent"
-    : "relative z-10 block h-auto w-full max-w-[380px] bg-transparent";
+  const frameClass = isFullscreen
+    ? "relative overflow-hidden rounded-none"
+    : "relative h-full w-full overflow-hidden rounded-[2.5rem]";
+  const frameStyle = isFullscreen
+    ? {
+        width: `${boardSize.w}px`,
+        height: `${boardSize.h}px`,
+      }
+    : undefined;
+  const canvasClass = "relative z-10 block h-full w-full bg-transparent";
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-surface text-on-surface">
@@ -362,48 +405,50 @@ export function FlappyGame() {
             onFlap();
           }}
         >
-          <div className="absolute inset-0 z-0">
-            <Image
-              src={FLAPPY_SKY_IMAGE}
-              alt=""
-              fill
-              className="object-cover opacity-60 mix-blend-soft-light"
-              sizes="380px"
-              priority
+          <div className={frameClass} style={frameStyle}>
+            <div className="absolute inset-0 z-0">
+              <Image
+                src={FLAPPY_SKY_IMAGE}
+                alt=""
+                fill
+                className="object-cover opacity-60 mix-blend-soft-light"
+                sizes="(max-width: 768px) 100vw, 380px"
+                priority
+              />
+              <div className="absolute inset-0 bg-gradient-to-b from-primary-container/10 via-transparent to-background/40" />
+            </div>
+
+            <div className="absolute inset-x-0 top-8 z-20 flex justify-center gap-4 px-6">
+              <div className="glass-panel flex flex-1 flex-col items-center rounded-2xl px-6 py-3">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/70">
+                  Score
+                </span>
+                <span className="font-headline text-3xl font-black text-primary">{displayScore}</span>
+              </div>
+              <div className="glass-panel flex flex-1 flex-col items-center rounded-2xl px-6 py-3">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/70">
+                  Best
+                </span>
+                <span className="font-headline text-3xl font-black text-secondary">{best}</span>
+              </div>
+            </div>
+
+            <canvas
+              ref={canvasRef}
+              width={W}
+              height={H}
+              className={canvasClass}
             />
-            <div className="absolute inset-0 bg-gradient-to-b from-primary-container/10 via-transparent to-background/40" />
-          </div>
 
-          <div className="absolute inset-x-0 top-8 z-20 flex justify-center gap-4 px-6">
-            <div className="glass-panel flex flex-1 flex-col items-center rounded-2xl px-6 py-3">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/70">
-                Score
-              </span>
-              <span className="font-headline text-3xl font-black text-primary">{displayScore}</span>
+            <div className="pointer-events-none absolute bottom-12 inset-x-0 z-20 flex flex-col items-center gap-3">
+              <div className="flex h-12 w-12 animate-pulse items-center justify-center rounded-full bg-white/40">
+                <span className="material-symbols-outlined text-primary">touch_app</span>
+              </div>
+              <p className="text-sm font-medium text-on-surface-variant/80">Tap to Jump</p>
             </div>
-            <div className="glass-panel flex flex-1 flex-col items-center rounded-2xl px-6 py-3">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/70">
-                Best
-              </span>
-              <span className="font-headline text-3xl font-black text-secondary">{best}</span>
-            </div>
+
+            <div className="absolute bottom-0 z-10 h-px w-full bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
           </div>
-
-          <canvas
-            ref={canvasRef}
-            width={W}
-            height={H}
-            className={canvasClass}
-          />
-
-          <div className="pointer-events-none absolute bottom-12 inset-x-0 z-20 flex flex-col items-center gap-3">
-            <div className="flex h-12 w-12 animate-pulse items-center justify-center rounded-full bg-white/40">
-              <span className="material-symbols-outlined text-primary">touch_app</span>
-            </div>
-            <p className="text-sm font-medium text-on-surface-variant/80">Tap to Jump</p>
-          </div>
-
-          <div className="absolute bottom-0 z-10 h-px w-full bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
 
           {isFullscreen && (
             <button
