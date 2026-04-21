@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { GamePageHeroTitle } from "@/components/game-ui/GamePageHeroTitle";
 import { PrismGameHeader } from "@/components/game-ui/PrismGameHeader";
 import { useRealtime } from "@/components/realtime/RealtimeProvider";
 import { MobileDpad } from "@/components/games/MobileDpad";
@@ -199,9 +200,18 @@ export function SnakeGame() {
         <div className="absolute bottom-[-10%] right-[-10%] h-[40%] w-[40%] rounded-full bg-secondary/5 blur-[120px]" />
       </div>
 
-      <PrismGameHeader variant="snake" title="Snake" connected={connected} />
+      <PrismGameHeader variant="snake" connected={connected} />
 
-      <main className="relative mx-auto flex max-w-[1400px] flex-col items-start justify-center gap-8 px-4 pb-12 pt-28 lg:flex-row lg:px-8">
+      <main className="relative mx-auto max-w-[1400px] px-4 pb-12 pt-32 sm:px-8">
+        <GamePageHeroTitle
+          title="Snake"
+          subtitle={
+            <>
+              Arena klasik — <span className="font-semibold text-primary">Multiplayer Realtime</span>
+            </>
+          }
+        />
+        <div className="flex flex-col gap-8 lg:flex-row lg:items-start">
         <section className="glass-panel relative w-full max-w-[800px] flex-1 overflow-hidden rounded-[2rem] p-4 shadow-luxe sm:p-8 lg:min-h-[min(700px,85vh)]">
           <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
             <span className="rounded-full border border-outline-variant/15 bg-surface-container-low px-2.5 py-1 text-on-surface-variant">
@@ -315,6 +325,7 @@ export function SnakeGame() {
             </ul>
           </div>
         </aside>
+        </div>
       </main>
 
       {(showEliminatedPopup || showFinishedPopup) && (

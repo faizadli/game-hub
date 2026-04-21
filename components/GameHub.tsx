@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { SiteLogo } from "@/components/branding/SiteLogo";
 import { GAMES } from "@/lib/games";
 import { GameCard, type HubVariant } from "./GameCard";
 import { useRealtime } from "./realtime/RealtimeProvider";
@@ -8,7 +10,8 @@ const VARIANT_BY_SLUG: Record<string, HubVariant> = {
   snake: "featured",
   tetris: "side",
   bomberman: "media",
-  flappy: "flappy",
+  /** Gaya Tetris (secondary), tinggi sama Bomberman/Maze */
+  flappy: "sideTall",
   maze: "maze",
 };
 
@@ -32,7 +35,15 @@ export function GameHub() {
       />
 
       <header className="relative z-10 mb-12 md:mb-16">
-        <div className="max-w-2xl">
+        <div className="flex max-w-2xl flex-col gap-5 sm:flex-row sm:items-center sm:gap-8">
+          <Link
+            href="/"
+            className="inline-flex shrink-0 self-start transition-opacity hover:opacity-90"
+            aria-label="Beranda Game Hub"
+          >
+            <SiteLogo size="lg" priority />
+          </Link>
+          <div className="min-w-0 flex-1">
           <h1 className="font-headline text-4xl font-extrabold tracking-[-0.02em] text-on-surface sm:text-5xl md:text-6xl">
             Game <span className="text-primary italic">Hub</span>
           </h1>
@@ -40,6 +51,7 @@ export function GameHub() {
             Jelajahi dunia petualangan dalam satu genggaman. Pilih permainanmu dan mulailah berkompetisi dengan
             pemain lain secara realtime.
           </p>
+          </div>
         </div>
       </header>
 

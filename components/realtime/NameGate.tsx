@@ -1,6 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState, useSyncExternalStore } from "react";
+import { SiteLogo } from "@/components/branding/SiteLogo";
 import { useRealtime } from "./RealtimeProvider";
 
 export function NameGate({ children }: { children: React.ReactNode }) {
@@ -34,6 +36,13 @@ export function NameGate({ children }: { children: React.ReactNode }) {
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-surface p-6">
       <div className="pointer-events-none absolute right-0 top-0 h-[400px] w-[400px] light-leak" aria-hidden />
       <div className="relative w-full max-w-md rounded-3xl bg-surface-container-lowest p-8 shadow-luxe">
+        <Link
+          href="/"
+          className="mb-6 inline-flex transition-opacity hover:opacity-90"
+          aria-label="Game Hub"
+        >
+          <SiteLogo size="md" priority />
+        </Link>
         <h1 className="font-headline text-2xl font-extrabold text-on-surface">Masukkan nama dulu</h1>
         <p className="mt-2 text-sm text-on-surface-variant">
           Nama ini akan terlihat oleh user lain yang sedang online.

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { GamePageHeroTitle } from "@/components/game-ui/GamePageHeroTitle";
 import { PrismGameHeader } from "@/components/game-ui/PrismGameHeader";
 import { MobileTetrisControls } from "@/components/games/MobileTetrisControls";
 import { useKeyboardState } from "@/lib/game/useKeyboardState";
@@ -367,7 +368,7 @@ export function TetrisGame() {
     <div className="relative min-h-screen bg-surface text-on-surface">
       <PrismGameHeader
         variant="tetris"
-        title="Tetris Multiplayer"
+        connected={connected}
         tetrisOnlineUsers={tetrisHeaderUsers}
       />
 
@@ -380,7 +381,16 @@ export function TetrisGame() {
         aria-hidden
       />
 
-      <main className="mx-auto flex max-w-7xl flex-col items-start justify-center gap-8 px-4 pb-12 pt-24 md:flex-row">
+      <main className="mx-auto max-w-7xl px-4 pb-12 pt-32 sm:px-8">
+        <GamePageHeroTitle
+          title="Tetris Multiplayer"
+          subtitle={
+            <>
+              Balok & strategi — <span className="font-semibold text-primary">Multiplayer Realtime</span>
+            </>
+          }
+        />
+        <div className="flex flex-col gap-8 md:flex-row md:items-start">
         <aside className="order-2 flex w-full flex-col gap-6 md:order-1 md:w-64">
           {!shouldShowSpectatorView ? (
             <>
@@ -578,6 +588,7 @@ export function TetrisGame() {
             </div>
           </div>
         </aside>
+        </div>
       </main>
 
       {showWinnerPopup && (

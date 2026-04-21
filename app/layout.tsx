@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Manrope, Plus_Jakarta_Sans } from "next/font/google";
 import { RealtimeShell } from "@/components/realtime/RealtimeShell";
+import { BRANDING } from "@/lib/branding";
 import "./globals.css";
 
 const plusJakarta = Plus_Jakarta_Sans({
@@ -16,8 +17,19 @@ const manrope = Manrope({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
   title: "Game Hub",
   description: "Game sederhana di browser — Snake, Tetris, Typing, dll.",
+  icons: {
+    icon: [{ url: BRANDING.favicon, type: "image/png" }],
+    shortcut: BRANDING.favicon,
+    apple: BRANDING.favicon,
+  },
+  openGraph: {
+    title: "Game Hub",
+    description: "Game sederhana di browser — Snake, Tetris, Typing, dll.",
+    images: [{ url: BRANDING.logoPng, alt: "Game Hub" }],
+  },
 };
 
 export const viewport: Viewport = {

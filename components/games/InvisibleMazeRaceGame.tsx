@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { GamePageHeroTitle } from "@/components/game-ui/GamePageHeroTitle";
 import { PrismGameHeader } from "@/components/game-ui/PrismGameHeader";
 import { MobileDpad } from "@/components/games/MobileDpad";
 import { useRealtime } from "@/components/realtime/RealtimeProvider";
@@ -194,9 +195,18 @@ export function InvisibleMazeRaceGame() {
 
   return (
     <div className="min-h-screen bg-surface text-on-surface">
-      <PrismGameHeader variant="maze" title="Invisible Maze Race" />
+      <PrismGameHeader variant="maze" connected={connected} />
 
-      <main className="flex min-h-screen flex-col gap-8 px-4 pb-12 pt-24 lg:flex-row lg:px-8">
+      <main className="px-4 pb-12 pt-32 lg:px-8">
+        <GamePageHeroTitle
+          title="Invisible Maze Race"
+          subtitle={
+            <>
+              Race mode — <span className="font-semibold text-primary">Multiplayer Realtime</span>
+            </>
+          }
+        />
+        <div className="flex flex-col gap-8 lg:flex-row">
         <aside className="flex w-full flex-col gap-6 lg:w-80">
           <div className="glass-panel flex flex-col gap-6 rounded-[2rem] border border-white/40 p-6 shadow-luxe">
             <div>
@@ -354,6 +364,7 @@ export function InvisibleMazeRaceGame() {
           </div>
         </div>
         </section>
+        </div>
       </main>
 
       {showResult && (

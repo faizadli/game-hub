@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { GamePageHeroTitle } from "@/components/game-ui/GamePageHeroTitle";
 import { PrismGameHeader } from "@/components/game-ui/PrismGameHeader";
 import { useRealtime } from "@/components/realtime/RealtimeProvider";
 
@@ -84,7 +85,7 @@ export function FlappyGame() {
     return Number.isNaN(n) ? 0 : n;
   });
 
-  const { users, counts, connected } = useRealtime();
+  const { users, connected } = useRealtime();
 
   const birdHit = useCallback((bx: number, by: number) => {
     return {
@@ -300,9 +301,17 @@ export function FlappyGame() {
         <div className="absolute -left-[5%] bottom-[-5%] h-[400px] w-[400px] rounded-full bg-secondary/5 blur-[100px]" />
       </div>
 
-      <PrismGameHeader variant="flappy" title="Flappy Bird" />
+      <PrismGameHeader variant="flappy" connected={connected} />
 
-      <main className="relative flex min-h-screen flex-col items-center justify-center px-4 pb-16 pt-24">
+      <main className="relative mx-auto flex max-w-[1400px] flex-col items-center px-4 pb-16 pt-32 sm:px-8">
+        <GamePageHeroTitle
+          title="Flappy Bird"
+          subtitle={
+            <>
+              Ketuk untuk terbang — <span className="font-semibold text-primary">Skor terbaik lokal</span>
+            </>
+          }
+        />
         <div
           className="group relative w-full max-w-[380px] touch-manipulation select-none overflow-hidden rounded-[2.5rem] shadow-luxe"
           role="application"

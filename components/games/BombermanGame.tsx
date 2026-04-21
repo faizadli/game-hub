@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { GamePageHeroTitle } from "@/components/game-ui/GamePageHeroTitle";
 import { PrismGameHeader } from "@/components/game-ui/PrismGameHeader";
 import { useRealtime } from "@/components/realtime/RealtimeProvider";
 import { MobileDpad } from "@/components/games/MobileDpad";
@@ -401,22 +402,23 @@ export function BombermanGame() {
         <div className="absolute -right-[10%] top-[40%] h-[50%] w-[50%] rounded-full bg-secondary/10 blur-[120px]" />
       </div>
 
-      <PrismGameHeader variant="bomberman" title="" connected={connected} />
+      <PrismGameHeader variant="bomberman" connected={connected} />
 
-      <main className="mx-auto max-w-[1440px] px-4 pb-12 pt-28 sm:px-8">
-        <div className="mb-10 text-center">
-          <h1 className="font-headline text-4xl font-extrabold tracking-tighter text-on-surface md:text-5xl lg:text-6xl">
-            Bomberman
-          </h1>
-          <p className="mt-2 font-body text-lg tracking-wide text-on-surface-variant">
-            Arena Klasik — <span className="font-semibold text-primary">Multiplayer Realtime</span>
-          </p>
-          {mobileUi && (
+      <main className="mx-auto max-w-[1440px] px-4 pb-12 pt-32 sm:px-8">
+        <GamePageHeroTitle
+          title="Bomberman"
+          subtitle={
+            <>
+              Arena Klasik — <span className="font-semibold text-primary">Multiplayer Realtime</span>
+            </>
+          }
+        >
+          {mobileUi ? (
             <p className="mx-auto mt-3 max-w-xl text-sm text-on-surface-variant">
               Di HP: kontrol sentuh di bawah arena. Keyboard WASD + Spasi.
             </p>
-          )}
-        </div>
+          ) : null}
+        </GamePageHeroTitle>
 
         <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
         <section className="glass-panel rounded-[2rem] p-4 shadow-luxe sm:p-6">
