@@ -65,6 +65,7 @@ function randomGapY(rng: () => number) {
 }
 
 export function FlappyGame() {
+  const gameShellRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const simRef = useRef<Sim>({
     phase: "idle",
@@ -84,6 +85,8 @@ export function FlappyGame() {
     const n = raw ? Number.parseInt(raw, 10) : 0;
     return Number.isNaN(n) ? 0 : n;
   });
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [fsError, setFsError] = useState<string | null>(null);
 
   const { users, connected } = useRealtime();
 
@@ -292,7 +295,43 @@ export function FlappyGame() {
     return () => window.removeEventListener("keydown", onKey);
   }, [onFlap]);
 
+  useEffect(() => {
+    const onFullscreenChange = () => {
+      setIsFullscreen(document.fullscreenElement === gameShellRef.current);
+    };
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
+  }, []);
+
+  const toggleFullscreen = useCallback(async () => {
+    const target = gameShellRef.current;
+    if (!target) return;
+    setFsError(null);
+
+    if (document.fullscreenElement === target) {
+      await document.exitFullscreen();
+      return;
+    }
+
+    if (typeof target.requestFullscreen !== "function") {
+      setFsError("Browser ini belum mendukung fullscreen.");
+      return;
+    }
+
+    try {
+      await target.requestFullscreen();
+    } catch {
+      setFsError("Fullscreen diblokir browser. Coba lagi lewat tombol ini.");
+    }
+  }, []);
+
   const flappyOnline = users.filter((u) => u.game === "flappy").length;
+  const gameShellClass = isFullscreen
+    ? "group relative h-screen w-screen touch-manipulation select-none overflow-hidden bg-black"
+    : "group relative w-full max-w-[380px] touch-manipulation select-none overflow-hidden rounded-[2.5rem] shadow-luxe";
+  const canvasClass = isFullscreen
+    ? "relative z-10 mx-auto block h-full w-auto max-w-full bg-transparent"
+    : "relative z-10 block h-auto w-full max-w-[380px] bg-transparent";
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-surface text-on-surface">
@@ -313,7 +352,8 @@ export function FlappyGame() {
           }
         />
         <div
-          className="group relative w-full max-w-[380px] touch-manipulation select-none overflow-hidden rounded-[2.5rem] shadow-luxe"
+          ref={gameShellRef}
+          className={gameShellClass}
           role="application"
           aria-label="Permainan Flappy Bird"
           tabIndex={0}
@@ -353,7 +393,7 @@ export function FlappyGame() {
             ref={canvasRef}
             width={W}
             height={H}
-            className="relative z-10 block h-auto w-full max-w-[380px] bg-transparent"
+            className={canvasClass}
           />
 
           <div className="pointer-events-none absolute bottom-12 inset-x-0 z-20 flex flex-col items-center gap-3">
@@ -364,7 +404,34 @@ export function FlappyGame() {
           </div>
 
           <div className="absolute bottom-0 z-10 h-px w-full bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
+
+          {isFullscreen && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                void toggleFullscreen();
+              }}
+              className="absolute right-4 top-4 z-30 inline-flex items-center gap-1 rounded-xl bg-black/45 px-3 py-2 text-xs font-bold text-white backdrop-blur-sm"
+            >
+              <span className="material-symbols-outlined text-base">fullscreen_exit</span>
+              Keluar
+            </button>
+          )}
         </div>
+
+        <button
+          type="button"
+          onClick={toggleFullscreen}
+          className="mt-4 inline-flex items-center gap-2 rounded-2xl border border-outline-variant/20 bg-surface-container-low px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-on-surface transition-colors hover:bg-surface-container"
+        >
+          <span className="material-symbols-outlined text-base">
+            {isFullscreen ? "fullscreen_exit" : "fullscreen"}
+          </span>
+          {isFullscreen ? "Keluar Fullscreen" : "Fullscreen"}
+        </button>
+        {fsError ? <p className="mt-2 text-center text-xs text-error">{fsError}</p> : null}
 
         <p className="mt-8 text-center text-xs text-on-surface-variant">
           Realtime {connected ? "aktif" : "offline"} · {flappyOnline} user di halaman Flappy
