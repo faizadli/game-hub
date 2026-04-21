@@ -18,7 +18,7 @@ const manrope = Manrope({
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
-  title: "Game Hub",
+  title: "Fafun",
   description: "Game sederhana di browser — Snake, Tetris, Typing, dll.",
   icons: {
     icon: [{ url: BRANDING.favicon, type: "image/png" }],
@@ -26,7 +26,7 @@ export const metadata: Metadata = {
     apple: BRANDING.favicon,
   },
   openGraph: {
-    title: "Game Hub",
+    title: "Fafun",
     description: "Game sederhana di browser — Snake, Tetris, Typing, dll.",
     images: [{ url: BRANDING.logoPng, alt: "Game Hub" }],
   },
