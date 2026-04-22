@@ -31,6 +31,7 @@ export function InvisibleMazeRaceGame() {
   const [showResult, setShowResult] = useState(false);
   const [resultTitle, setResultTitle] = useState("");
   const [resultMessage, setResultMessage] = useState("");
+  const [memorizeSecs, setMemorizeSecs] = useState(0);
   const prevPhaseRef = useRef<string | null>(null);
   const memorizeStartRef = useRef<number | null>(null);
 
@@ -43,11 +44,6 @@ export function InvisibleMazeRaceGame() {
   const cols = mazeState?.cols ?? 25;
   const width = cols * CELL;
   const height = rows * CELL + HUD_HEIGHT;
-  const now = Date.now();
-  const memorizeSecs =
-    mazeState?.phase === "memorize" && memorizeStartRef.current !== null
-      ? Math.max(0, Math.ceil((memorizeStartRef.current + MEMORIZE_MS - now) / 1000))
-      : 0;
 
   useEffect(() => {
     const id = window.setInterval(() => setTick((value) => (value + 1) % 10_000), 250);
@@ -161,6 +157,24 @@ export function InvisibleMazeRaceGame() {
   }, [mazeState]);
 
   useEffect(() => {
+    if (mazeState?.phase !== "memorize") return;
+    const update = () => {
+      const start = memorizeStartRef.current;
+      if (start === null) {
+        setMemorizeSecs(0);
+        return;
+      }
+      setMemorizeSecs(Math.max(0, Math.ceil((start + MEMORIZE_MS - Date.now()) / 1000)));
+    };
+    const timeoutId = window.setTimeout(update, 0);
+    const intervalId = window.setInterval(update, 250);
+    return () => {
+      window.clearTimeout(timeoutId);
+      window.clearInterval(intervalId);
+    };
+  }, [mazeState?.phase]);
+
+  useEffect(() => {
     if (!mazeState) {
       prevPhaseRef.current = null;
       return;
@@ -179,9 +193,6 @@ export function InvisibleMazeRaceGame() {
       );
       setShowResult(true);
     }
-    if (mazeState.phase === "lobby") {
-      setShowResult(false);
-    }
     prevPhaseRef.current = mazeState.phase;
   }, [mazeState, selfId]);
 
@@ -192,6 +203,9 @@ export function InvisibleMazeRaceGame() {
     mazeState?.phase === "lobby" ? onPagePlayers.filter((p) => !p.spectator && !p.ready).length : 0;
   const winner =
     mazeState?.winnerId && mazeState.players.find((player) => player.id === mazeState.winnerId);
+
+  const resultModalOpen = showResult && mazeState?.phase === "finished";
+  const memorizeSecsShown = mazeState?.phase === "memorize" ? memorizeSecs : 0;
 
   return (
     <div className="min-h-screen bg-surface text-on-surface">
@@ -346,9 +360,9 @@ export function InvisibleMazeRaceGame() {
             )}
             {mazeState?.phase === "memorize" && (
               <div className="pointer-events-none absolute inset-2 flex items-center justify-center">
-                {memorizeSecs <= 3 && memorizeSecs > 0 ? (
+                {memorizeSecsShown <= 3 && memorizeSecsShown > 0 ? (
                   <p className="select-none text-8xl font-black leading-none text-amber-200 [text-shadow:0_0_20px_rgba(0,0,0,0.9)]">
-                    {memorizeSecs}
+                    {memorizeSecsShown}
                   </p>
                 ) : null}
               </div>
@@ -367,7 +381,7 @@ export function InvisibleMazeRaceGame() {
         </div>
       </main>
 
-      {showResult && (
+      {resultModalOpen && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-on-surface/25 px-4 backdrop-blur-sm">
           <div className="glass-panel w-full max-w-md rounded-3xl p-6 shadow-luxe">
             <h3
