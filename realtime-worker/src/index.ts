@@ -1,4 +1,10 @@
 import { DurableObject } from "cloudflare:workers";
+import {
+  buildSnakeWirePayload,
+  encodeBomberGrid,
+  encodeMazeGrid,
+  toTetrisPlayerWire,
+} from "../../lib/realtime/wireCodec";
 
 type GameSlug = "hub" | "snake" | "tetris" | "bomberman" | "flappy" | "maze";
 type SnakePhase = "lobby" | "playing" | "finished";
@@ -874,21 +880,25 @@ export class LobbyRoom extends DurableObject {
 
   private tickTetrisRound() {
     if (this.tetrisPhase !== "playing") return;
-    let changed = false;
+    let anyChanged = false;
     for (const [id, player] of this.tetrisPlayers) {
       if (!player.active || player.done) continue;
       const runtime = this.tetrisRuntime.get(id);
       if (!runtime) continue;
       runtime.dropMs -= TETRIS_TICK_MS;
       const interval = this.tetrisDropInterval(runtime.level);
+      let stepped = false;
       while (runtime.dropMs <= 0 && player.active && !player.done) {
         runtime.dropMs += interval;
         this.stepTetris(id);
-        changed = true;
+        stepped = true;
       }
-      this.refreshTetrisScreen(id);
+      if (stepped) {
+        this.refreshTetrisScreen(id);
+        anyChanged = true;
+      }
     }
-    if (changed) {
+    if (anyChanged) {
       this.broadcastTetrisState();
       this.tryFinishTetrisRound();
     }
@@ -1869,15 +1879,16 @@ export class LobbyRoom extends DurableObject {
       this.bomberGrid.length > 0
         ? this.bomberGrid.map((row) => row.map((v) => v as 0 | 1 | 2))
         : Array.from({ length: BOMBER_ROWS }, () => Array<0 | 1 | 2>(BOMBER_COLS).fill(0));
+    const gridS = encodeBomberGrid(grid);
 
-    this.broadcast({
+    this.broadcastToGame("bomberman", {
       type: "bomber_state",
       phase: this.bomberPhase,
       round: this.bomberRound,
       winnerId: this.bomberWinnerId,
       rows: BOMBER_ROWS,
       cols: BOMBER_COLS,
-      grid,
+      gridS,
       players,
       bombs: this.bomberBombs.map((b) => ({
         id: b.id,
@@ -2196,11 +2207,9 @@ export class LobbyRoom extends DurableObject {
         ? this.mazeGrid.map((row) => row.map((v) => v as 0 | 1))
         : Array.from({ length: MAZE_ROWS }, () => Array<0 | 1>(MAZE_COLS).fill(0));
     const shouldReveal = this.mazePhase === "memorize";
-    const grid = shouldReveal
-      ? fullGrid
-      : Array.from({ length: MAZE_ROWS }, () => Array<0 | 1>(MAZE_COLS).fill(0));
+    const gridS = shouldReveal ? encodeMazeGrid(fullGrid) : "";
 
-    this.broadcast({
+    this.broadcastToGame("maze", {
       type: "maze_state",
       phase: this.mazePhase,
       round: this.mazeRound,
@@ -2211,7 +2220,7 @@ export class LobbyRoom extends DurableObject {
       goal: { row: MAZE_ROWS - 2, col: MAZE_COLS - 2 },
       gridVisible: shouldReveal,
       revealUntilMs: this.mazePhase === "memorize" ? this.mazeRevealUntilMs : null,
-      grid,
+      gridS,
       players,
     });
   }
@@ -2232,7 +2241,7 @@ export class LobbyRoom extends DurableObject {
       flappy: users.filter((u) => u.game === "flappy").length,
       maze: users.filter((u) => u.game === "maze").length,
     };
-    this.broadcast({ type: "presence", users, counts });
+    this.broadcastAll({ type: "presence", users, counts });
   }
 
   private broadcastSnakeState() {
@@ -2255,17 +2264,19 @@ export class LobbyRoom extends DurableObject {
     const snakes = Object.fromEntries(
       [...this.players.values()].map((p) => [p.id, p.segments])
     );
-    this.broadcast({
-      type: "snake_state",
-      phase: this.phase,
-      players,
-      snakes,
-      food: this.food,
-      winnerId: this.winnerId,
-      round: this.round,
-      rows: this.rows,
-      cols: this.cols,
-    });
+    this.broadcastToGame(
+      "snake",
+      buildSnakeWirePayload({
+        phase: this.phase,
+        players,
+        snakes,
+        food: this.food,
+        winnerId: this.winnerId,
+        round: this.round,
+        rows: this.rows,
+        cols: this.cols,
+      })
+    );
   }
 
   private broadcastTetrisState() {
@@ -2291,8 +2302,9 @@ export class LobbyRoom extends DurableObject {
       }));
     const players = [...this.tetrisScreens.values()]
       .filter((screen) => tetrisUsers.has(screen.id) || this.tetrisPlayers.get(screen.id)?.active)
-      .sort((a, b) => a.name.localeCompare(b.name));
-    this.broadcast({
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((screen) => toTetrisPlayerWire(screen, TETRIS_ROWS, TETRIS_COLS));
+    this.broadcastToGame("tetris", {
       type: "tetris_state",
       phase: this.tetrisPhase,
       round: this.tetrisRound,
@@ -2312,9 +2324,22 @@ export class LobbyRoom extends DurableObject {
     }
   }
 
-  private broadcast(payload: unknown) {
+  private broadcastAll(payload: unknown) {
     const data = JSON.stringify(payload);
     for (const ws of this.clients.keys()) {
+      try {
+        ws.send(data);
+      } catch {
+        this.removeClient(ws);
+      }
+    }
+  }
+
+  /** Hanya ke klien di halaman game itu — hindari flood ke hub / game lain. */
+  private broadcastToGame(game: GameSlug, payload: unknown) {
+    const data = JSON.stringify(payload);
+    for (const [ws, c] of this.clients) {
+      if (c.game !== game) continue;
       try {
         ws.send(data);
       } catch {

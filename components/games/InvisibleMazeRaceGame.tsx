@@ -4,7 +4,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { GamePageHeroTitle } from "@/components/game-ui/GamePageHeroTitle";
 import { PrismGameHeader } from "@/components/game-ui/PrismGameHeader";
 import { MobileDpad } from "@/components/games/MobileDpad";
-import { useRealtime } from "@/components/realtime/RealtimeProvider";
+import {
+  useRealtimeActions,
+  useRealtimeHub,
+  useMazeGameState,
+} from "@/components/realtime/RealtimeProvider";
 import { useMobileGameUi } from "@/lib/hooks/useMobileGameUi";
 import type { MazePlayerState } from "@/lib/realtime/types";
 
@@ -24,7 +28,9 @@ function playerColor(id: string, idx: number) {
 }
 
 export function InvisibleMazeRaceGame() {
-  const { mazeState, selfId, users, connected, sendMazeMove, sendMazeReady } = useRealtime();
+  const { selfId, users, connected } = useRealtimeHub();
+  const mazeState = useMazeGameState();
+  const { sendMazeMove, sendMazeReady } = useRealtimeActions();
   const mobileUi = useMobileGameUi();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [tick, setTick] = useState(0);

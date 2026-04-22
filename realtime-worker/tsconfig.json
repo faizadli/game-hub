@@ -8,5 +8,5 @@
     "skipLibCheck": true,
     "types": ["@cloudflare/workers-types/experimental"]
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts", "../lib/realtime/wireCodec.ts"]
 }

@@ -3,10 +3,10 @@
 import Link from "next/link";
 import { useMemo, useState, useSyncExternalStore } from "react";
 import { SiteLogo } from "@/components/branding/SiteLogo";
-import { useRealtime } from "./RealtimeProvider";
+import { useRealtimeHub } from "./RealtimeProvider";
 
 export function NameGate({ children }: { children: React.ReactNode }) {
-  const { username, setUsername } = useRealtime();
+  const { username, setUsername } = useRealtimeHub();
   const [draft, setDraft] = useState("");
   const mounted = useSyncExternalStore(
     () => () => {

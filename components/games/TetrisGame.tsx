@@ -5,7 +5,11 @@ import { GamePageHeroTitle } from "@/components/game-ui/GamePageHeroTitle";
 import { PrismGameHeader } from "@/components/game-ui/PrismGameHeader";
 import { MobileTetrisControls } from "@/components/games/MobileTetrisControls";
 import { useKeyboardState } from "@/lib/game/useKeyboardState";
-import { useRealtime } from "@/components/realtime/RealtimeProvider";
+import {
+  useRealtimeActions,
+  useRealtimeHub,
+  useTetrisGameState,
+} from "@/components/realtime/RealtimeProvider";
 import { useMobileGameUi } from "@/lib/hooks/useMobileGameUi";
 import type { TetrisBoard, TetrisPlayerScreen } from "@/lib/realtime/types";
 
@@ -162,7 +166,9 @@ function SpectatorBoard({ player }: { player: TetrisPlayerScreen }) {
 
 export function TetrisGame() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const { selfId, tetrisState, sendTetrisReady, sendTetrisInput, connected, users } = useRealtime();
+  const { selfId, connected, users } = useRealtimeHub();
+  const tetrisState = useTetrisGameState();
+  const { sendTetrisReady, sendTetrisInput } = useRealtimeActions();
   const mobileUi = useMobileGameUi();
   const [showWinnerPopup, setShowWinnerPopup] = useState(false);
   const [showLosePopup, setShowLosePopup] = useState(false);

@@ -20,6 +20,12 @@ import type {
   TetrisInputAction,
   TetrisRealtimeState,
 } from "@/lib/realtime/types";
+import {
+  decodeBomberWire,
+  decodeMazeWire,
+  decodeSnakeWire,
+  decodeTetrisWire,
+} from "@/lib/realtime/wireCodec";
 
 type RealtimeContextValue = {
   connected: boolean;
@@ -56,7 +62,33 @@ const defaultCounts: GameCounts = {
 const ACTIVITY_KEY = "games_web_last_activity_at";
 const IDLE_TIMEOUT_MS = 60 * 60 * 1000; // 1 hour
 
-const Ctx = createContext<RealtimeContextValue | null>(null);
+const HubCtx = createContext<HubContextValue | null>(null);
+const ActionsCtx = createContext<ActionsContextValue | null>(null);
+const SnakeStateCtx = createContext<SnakeRealtimeState | null>(null);
+const TetrisStateCtx = createContext<TetrisRealtimeState | null>(null);
+const BomberStateCtx = createContext<BomberRealtimeState | null>(null);
+const MazeStateCtx = createContext<MazeRealtimeState | null>(null);
+
+type HubContextValue = {
+  connected: boolean;
+  username: string;
+  setUsername: (name: string) => void;
+  selfId: string | null;
+  users: PresenceUser[];
+  counts: GameCounts;
+};
+
+type ActionsContextValue = {
+  sendTetrisReady: (value: boolean) => void;
+  sendSnakeReady: (value: boolean) => void;
+  sendSnakeDirection: (dir: "up" | "down" | "left" | "right") => void;
+  sendTetrisInput: (action: TetrisInputAction) => void;
+  sendBomberReady: (value: boolean) => void;
+  sendBomberDirection: (dir: "up" | "down" | "left" | "right") => void;
+  sendBomberBomb: () => void;
+  sendMazeReady: (value: boolean) => void;
+  sendMazeMove: (dir: "up" | "down" | "left" | "right") => void;
+};
 
 function toGame(pathname: string): GameSlug {
   if (pathname.startsWith("/games/snake")) return "snake";
@@ -110,6 +142,14 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const [tetrisState, setTetrisState] = useState<TetrisRealtimeState | null>(null);
   const [bomberState, setBomberState] = useState<BomberRealtimeState | null>(null);
   const [mazeState, setMazeState] = useState<MazeRealtimeState | null>(null);
+
+  useEffect(() => {
+    const g = toGame(pathname);
+    if (g !== "snake") setSnakeState(null);
+    if (g !== "tetris") setTetrisState(null);
+    if (g !== "bomberman") setBomberState(null);
+    if (g !== "maze") setMazeState(null);
+  }, [pathname]);
 
   const resetRealtimeState = useCallback(() => {
     setSelfId(null);
@@ -261,13 +301,17 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
           setUsers(Array.isArray(msg.users) ? msg.users : []);
           setCounts(msg.counts ?? defaultCounts);
         } else if (msg.type === "snake_state") {
-          setSnakeState(msg);
+          if (toGame(pathnameRef.current) !== "snake") return;
+          setSnakeState(decodeSnakeWire(msg as Record<string, unknown>));
         } else if (msg.type === "tetris_state") {
-          setTetrisState(msg);
+          if (toGame(pathnameRef.current) !== "tetris") return;
+          setTetrisState(decodeTetrisWire(msg as Record<string, unknown>));
         } else if (msg.type === "bomber_state") {
-          setBomberState(msg);
+          if (toGame(pathnameRef.current) !== "bomberman") return;
+          setBomberState(decodeBomberWire(msg as Record<string, unknown>));
         } else if (msg.type === "maze_state") {
-          setMazeState(msg);
+          if (toGame(pathnameRef.current) !== "maze") return;
+          setMazeState(decodeMazeWire(msg as Record<string, unknown>));
         }
       } catch {
         // ignore malformed payload
@@ -352,7 +396,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     ws.send(JSON.stringify({ type: "maze_move", dir }));
   }, []);
 
-  const value = useMemo<RealtimeContextValue>(
+  const hubValue = useMemo<HubContextValue>(
     () => ({
       connected,
       username,
@@ -360,10 +404,12 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       selfId,
       users,
       counts,
-      snakeState,
-      tetrisState,
-      bomberState,
-      mazeState,
+    }),
+    [connected, username, setUsername, selfId, users, counts]
+  );
+
+  const actionsValue = useMemo<ActionsContextValue>(
+    () => ({
       sendTetrisReady,
       sendSnakeReady,
       sendSnakeDirection,
@@ -375,16 +421,6 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       sendMazeMove,
     }),
     [
-      connected,
-      username,
-      setUsername,
-      selfId,
-      users,
-      counts,
-      snakeState,
-      tetrisState,
-      bomberState,
-      mazeState,
       sendTetrisReady,
       sendSnakeReady,
       sendSnakeDirection,
@@ -397,15 +433,68 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     ]
   );
 
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+  return (
+    <ActionsCtx.Provider value={actionsValue}>
+      <HubCtx.Provider value={hubValue}>
+        <SnakeStateCtx.Provider value={snakeState}>
+          <TetrisStateCtx.Provider value={tetrisState}>
+            <BomberStateCtx.Provider value={bomberState}>
+              <MazeStateCtx.Provider value={mazeState}>{children}</MazeStateCtx.Provider>
+            </BomberStateCtx.Provider>
+          </TetrisStateCtx.Provider>
+        </SnakeStateCtx.Provider>
+      </HubCtx.Provider>
+    </ActionsCtx.Provider>
+  );
 }
 
-export function useRealtime() {
-  const ctx = useContext(Ctx);
-  if (!ctx) {
-    throw new Error("useRealtime must be used inside RealtimeProvider");
-  }
+export function useRealtimeHub() {
+  const ctx = useContext(HubCtx);
+  if (!ctx) throw new Error("useRealtimeHub must be used inside RealtimeProvider");
   return ctx;
+}
+
+export function useRealtimeActions() {
+  const ctx = useContext(ActionsCtx);
+  if (!ctx) throw new Error("useRealtimeActions must be used inside RealtimeProvider");
+  return ctx;
+}
+
+export function useSnakeGameState() {
+  return useContext(SnakeStateCtx);
+}
+
+export function useTetrisGameState() {
+  return useContext(TetrisStateCtx);
+}
+
+export function useBomberGameState() {
+  return useContext(BomberStateCtx);
+}
+
+export function useMazeGameState() {
+  return useContext(MazeStateCtx);
+}
+
+/** Gabungan semua slice — memicu re-render saat game manapun berubah; utamakan hook slice di atas. */
+export function useRealtime(): RealtimeContextValue {
+  const hub = useRealtimeHub();
+  const actions = useRealtimeActions();
+  const snakeState = useSnakeGameState();
+  const tetrisState = useTetrisGameState();
+  const bomberState = useBomberGameState();
+  const mazeState = useMazeGameState();
+  return useMemo(
+    () => ({
+      ...hub,
+      ...actions,
+      snakeState,
+      tetrisState,
+      bomberState,
+      mazeState,
+    }),
+    [hub, actions, snakeState, tetrisState, bomberState, mazeState]
+  );
 }
 
 export function useCurrentGame() {

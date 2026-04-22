@@ -3,7 +3,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { GamePageHeroTitle } from "@/components/game-ui/GamePageHeroTitle";
 import { PrismGameHeader } from "@/components/game-ui/PrismGameHeader";
-import { useRealtime } from "@/components/realtime/RealtimeProvider";
+import {
+  useRealtimeActions,
+  useRealtimeHub,
+  useBomberGameState,
+} from "@/components/realtime/RealtimeProvider";
 import { MobileDpad } from "@/components/games/MobileDpad";
 import { useMobileGameUi } from "@/lib/hooks/useMobileGameUi";
 import type { BomberPlayerState } from "@/lib/realtime/types";
@@ -214,15 +218,9 @@ function drawPlayer(
 
 export function BombermanGame() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const {
-    bomberState,
-    selfId,
-    sendBomberReady,
-    sendBomberDirection,
-    sendBomberBomb,
-    connected,
-    users,
-  } = useRealtime();
+  const { selfId, connected, users } = useRealtimeHub();
+  const bomberState = useBomberGameState();
+  const { sendBomberReady, sendBomberDirection, sendBomberBomb } = useRealtimeActions();
   const mobileUi = useMobileGameUi();
 
   const rows = bomberState?.rows ?? 11;

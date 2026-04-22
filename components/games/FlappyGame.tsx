@@ -4,7 +4,7 @@ import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { GamePageHeroTitle } from "@/components/game-ui/GamePageHeroTitle";
 import { PrismGameHeader } from "@/components/game-ui/PrismGameHeader";
-import { useRealtime } from "@/components/realtime/RealtimeProvider";
+import { useRealtimeHub } from "@/components/realtime/RealtimeProvider";
 
 const FLAPPY_SKY_IMAGE =
   "https://lh3.googleusercontent.com/aida-public/AB6AXuCStTTqYLtEN4HJefiGqijEmbetGuoNooLVhhj7fOVWziU4vZIbF_Brw7WvdD_K9US3Ojr1SR0CgN0AKe6tapctDi2kOnncjt0ViUO4O-6fZaud3LPVwAuQh1JGp07cxaiBQlo0KbphL5Hhn9Xb7l99OkhdI4Glto7fUiXf9U0ZHhCt9pTcQexcrWgozD1iUtbiIqJnVg6kQtpjd83OvL_us23hnNjEIdx9x8hgWJdmfCLxs81VUm1maDV-dVuI8mFpibmYI4SDfDc";
@@ -89,7 +89,7 @@ export function FlappyGame() {
   const [fsError, setFsError] = useState<string | null>(null);
   const [viewportSize, setViewportSize] = useState({ w: W, h: H });
 
-  const { users, connected } = useRealtime();
+  const { users, connected } = useRealtimeHub();
 
   const birdHit = useCallback((bx: number, by: number) => {
     return {

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { SiteLogo } from "@/components/branding/SiteLogo";
 import { GAMES } from "@/lib/games";
 import { GameCard, type HubVariant } from "./GameCard";
-import { useRealtime } from "./realtime/RealtimeProvider";
+import { useRealtimeHub } from "./realtime/RealtimeProvider";
 
 const VARIANT_BY_SLUG: Record<string, HubVariant> = {
   snake: "featured",
@@ -16,7 +16,7 @@ const VARIANT_BY_SLUG: Record<string, HubVariant> = {
 };
 
 export function GameHub() {
-  const { counts, username, connected } = useRealtime();
+  const { counts, username, connected } = useRealtimeHub();
 
   const gameCountBySlug: Record<string, number> = {
     snake: counts.snake,

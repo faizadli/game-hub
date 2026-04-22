@@ -3,7 +3,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { GamePageHeroTitle } from "@/components/game-ui/GamePageHeroTitle";
 import { PrismGameHeader } from "@/components/game-ui/PrismGameHeader";
-import { useRealtime } from "@/components/realtime/RealtimeProvider";
+import {
+  useRealtimeActions,
+  useRealtimeHub,
+  useSnakeGameState,
+} from "@/components/realtime/RealtimeProvider";
 import { MobileDpad } from "@/components/games/MobileDpad";
 import { useMobileGameUi } from "@/lib/hooks/useMobileGameUi";
 import type { SnakePlayerState } from "@/lib/realtime/types";
@@ -43,14 +47,9 @@ function playerColor(playerId: string) {
 
 export function SnakeGame() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const {
-    snakeState,
-    users,
-    selfId,
-    sendSnakeReady,
-    sendSnakeDirection,
-    connected,
-  } = useRealtime();
+  const { users, selfId, connected } = useRealtimeHub();
+  const snakeState = useSnakeGameState();
+  const { sendSnakeReady, sendSnakeDirection } = useRealtimeActions();
   const mobileUi = useMobileGameUi();
 
   const rows = snakeState?.rows ?? 18;
